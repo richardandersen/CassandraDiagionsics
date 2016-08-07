@@ -41,7 +41,7 @@ static DateTime LogCurrentDate = DateTime.MinValue; //DateTime.Now.Date; //If Da
 void Main()
 {
 	//Location where this application will write or update the Excel file.
-	var excelFilePath = @"C:\Users\richard\Desktop\TestDiag.xlsx"; //<==== Should be updated
+	var excelFilePath = @"[DeskTop]\TestDiag.xlsx"; //<==== Should be updated
 	
 	//If diagnosticNoSubFolders is false:
 	//Directory where files are located to parse DSE diagnostics files produced by DataStax OpsCenter diagnostics or a special directory structure where DSE diagnostics information is placed.
@@ -62,7 +62,7 @@ void Main()
 	//If diagnosticNoSubFolders is ture:
 	//All diagnostic files are located directly under diagnosticPath folder. Each file should have the IP Adress either in the beginning or end of the file name.
 	//	e.g., cfstats_10.192.40.7, system-10.192.40.7.log, 10.192.40.7_system.log, etc.
-	var diagnosticPath = @"C:\Users\Richard\Desktop\production_group_v_1-diagnostics-2016_07_04_15_43_48_UTC"; //@"C:\Users\richard\Desktop\datastax"; //<==== Should be Updated 
+	var diagnosticPath = @"[MyDocuments]\LINQPad Queries\DataStax\TestData\production_group_v_1-diagnostics-2016_07_04_15_43_48_UTC"; //@"C:\Users\richard\Desktop\datastax"; //<==== Should be Updated 
 	var diagnosticNoSubFolders = false; //<==== Should be Updated 
 	var parseLogs = true;
 	
@@ -320,7 +320,7 @@ void Main()
 																			   }));
 
 	//Non-Logs
-	var excelFile = new FileInfo(excelFilePath);
+	var excelFile = Common.Path.PathUtils.BuildFilePath(excelFilePath).FileInfo();
 	using (var excelPkg = new ExcelPackage(excelFile))
 	{
 		//Ring
