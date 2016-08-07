@@ -1,0 +1,21 @@
+{"percentage":
+ {"\/dev\/mapper\/Var_Var":14,
+  "\/dev\/mapper\/Home_Home":1,
+  "\/dev\/sda2":6,
+  "\/dev\/sda3":15,
+  "\/dev\/sda1":15,
+  "\/dev\/mapper\/LogVol00_Root":28},
+ "used":
+ {"\/dev\/mapper\/Var_Var":2,
+  "\/dev\/mapper\/Home_Home":1,
+  "\/dev\/sda2":48,
+  "\/dev\/sda3":7,
+  "\/dev\/sda1":1,
+  "\/dev\/mapper\/LogVol00_Root":4},
+ "free":
+ {"\/dev\/mapper\/Var_Var":8,
+  "\/dev\/mapper\/Home_Home":23,
+  "\/dev\/sda2":865,
+  "\/dev\/sda3":40,
+  "\/dev\/sda1":1,
+  "\/dev\/mapper\/LogVol00_Root":10}}

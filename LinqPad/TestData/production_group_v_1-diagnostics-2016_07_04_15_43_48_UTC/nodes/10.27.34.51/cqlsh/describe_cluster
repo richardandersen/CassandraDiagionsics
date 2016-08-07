@@ -1,0 +1,4 @@
+
+Cluster: production_group_v_1
+Partitioner: Murmur3Partitioner
+

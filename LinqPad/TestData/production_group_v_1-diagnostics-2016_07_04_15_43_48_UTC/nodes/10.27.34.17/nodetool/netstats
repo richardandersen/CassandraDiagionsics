@@ -1,0 +1,9 @@
+Mode: NORMAL
+Not sending any streams.
+Read Repair Statistics:
+Attempted: 78313
+Mismatch (Blocking): 0
+Mismatch (Background): 32
+Pool Name                    Active   Pending      Completed
+Commands                        n/a         0      312243099
+Responses                       n/a         0      276075574

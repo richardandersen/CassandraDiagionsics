@@ -1,0 +1,33 @@
+Pool Name                    Active   Pending      Completed   Blocked  All time blocked
+MutationStage                     0         0      345754808         0                 0
+ReadStage                         0         0        5215476         0                 0
+RequestResponseStage              0         0      368805761         0                 0
+ReadRepairStage                   0         0          14251         0                 0
+CounterMutationStage              0         0              0         0                 0
+MiscStage                         0         0              0         0                 0
+AntiEntropySessions               0         0           3761         0                 0
+HintedHandoff                     0         1           8203         0                 0
+GossipStage                       0         0        8995234         0                 0
+CacheCleanupExecutor              0         0              0         0                 0
+InternalResponseStage             0         0            126         0                 0
+CommitLogArchiver                 0         0              0         0                 0
+CompactionExecutor                0         0        2644332         0                 0
+ValidationExecutor                0         0          33581         0                 0
+MigrationStage                    0         0            267         0                 0
+AntiEntropyStage                  0         0         302085         0                 0
+PendingRangeCalculator            0         0             45         0                 0
+Sampler                           0         0              0         0                 0
+MemtableFlushWriter               0         0          88096         0                 0
+MemtablePostFlush                 0         0         164463         0                 0
+MemtableReclaimMemory             0         0          88102         0                 0
+
+Message type           Dropped
+READ                         0
+RANGE_SLICE                  0
+_TRACE                     334
+MUTATION                   956
+COUNTER_MUTATION             0
+BINARY                       0
+REQUEST_RESPONSE             0
+PAGED_RANGE                  0
+READ_REPAIR                  0

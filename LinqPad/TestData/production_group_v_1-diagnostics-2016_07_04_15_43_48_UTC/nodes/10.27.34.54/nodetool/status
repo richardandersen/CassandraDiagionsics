@@ -1,0 +1,28 @@
+Datacenter: DC1
+===============
+Status=Up/Down
+|/ State=Normal/Leaving/Joining/Moving
+--  Address      Load       Tokens  Owns    Host ID                               Rack
+UN  10.27.34.11  47.33 GB   256     ?       286872d8-036b-48d1-a615-0f0144df704f  RAC1
+UN  10.27.34.15  52.29 GB   256     ?       6e14cbd9-f559-4040-bc7d-ed62e6293951  RAC1
+UN  10.27.34.14  50.98 GB   256     ?       0a898ccd-e25e-45ef-8472-0fbf80ad408f  RAC1
+UN  10.27.34.13  49.04 GB   256     ?       7b27bf4b-e0ac-42db-ae04-af0eebf85d88  RAC1
+UN  10.27.34.12  48.28 GB   256     ?       20f3700f-a049-4637-b826-c7e4628a2ace  RAC1
+UN  10.27.34.19  51.57 GB   256     ?       26658635-c35e-405c-8054-ce211f5dafb6  RAC1
+UN  10.27.34.17  48.36 GB   256     ?       092415fd-bd7b-4416-992c-97c1214845c6  RAC1
+UN  10.27.34.16  49.75 GB   256     ?       c505009c-9d6c-4ca2-8794-7d9edb656a7e  RAC1
+UN  10.27.34.22  50.79 GB   256     ?       7ae2f823-b95c-4423-b95a-3c88851a6f94  RAC1
+UN  10.27.34.21  48.26 GB   256     ?       e19bc418-f5ff-44d2-b249-3aa0e80d0203  RAC1
+Datacenter: DC2
+===============
+Status=Up/Down
+|/ State=Normal/Leaving/Joining/Moving
+--  Address      Load       Tokens  Owns    Host ID                               Rack
+UN  10.27.34.56  76.29 GB   256     ?       ad50fcd5-3967-4413-9130-429dcc07668e  RAC1
+UN  10.27.34.51  83.52 GB   256     ?       7e999a35-8de3-4265-abf8-454f72d18166  RAC1
+UN  10.27.34.55  83.03 GB   256     ?       114d9acf-7f92-4c5d-a864-e9d7becf28e5  RAC1
+UN  10.27.34.54  25.83 GB   256     ?       e8b2fc55-a527-4bf9-8807-503153e73c45  RAC1
+UN  10.27.34.53  88.29 GB   256     ?       c7112c7f-c0a1-4504-bffa-2ba417b88508  RAC1
+UN  10.27.34.52  87.7 GB    256     ?       f98826dc-ba12-4822-91f1-8fe3f36558fa  RAC1
+
+Note: Non-system keyspaces don't have the same replication settings, effective ownership information is meaningless

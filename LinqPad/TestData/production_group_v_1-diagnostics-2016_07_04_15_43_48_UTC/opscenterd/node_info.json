@@ -1,0 +1,1148 @@
+{
+    "10.27.34.11": {
+        "agent_jvm_version": "1.8.0_45", 
+        "alias": null, 
+        "data_held": 50805475445.0, 
+        "dc": "DC1", 
+        "devices": {
+            "commitlog": "sda", 
+            "data": [
+                "sda"
+            ], 
+            "other": [
+                "dm_2", 
+                "dm_1"
+            ], 
+            "saved_caches": "dm_0"
+        }, 
+        "ec2": {
+            "ami-id": null, 
+            "instance-id": null, 
+            "instance-type": null, 
+            "placement": null
+        }, 
+        "has_jna": true, 
+        "hostname": "AIQHDB01.ebusiness.msp.local", 
+        "inmemory": {
+            "max": 6733745356, 
+            "tables": [], 
+            "version": 2
+        }, 
+        "last_seen": 0, 
+        "load": 1.1899999999999999, 
+        "mode": "normal", 
+        "network_interfaces": [
+            "lo", 
+            "eth0"
+        ], 
+        "node_ip": "10.27.34.11", 
+        "node_version": {
+            "cassandra": "2.1.8.689", 
+            "dse": "4.7.3", 
+            "jobtracker": null, 
+            "search": null, 
+            "spark": {
+                "master": null, 
+                "version": null, 
+                "worker": null
+            }, 
+            "tasktracker": null
+        }, 
+        "num_procs": 8, 
+        "os": "linux", 
+        "partitions": {
+            "commitlog": "/dev/sda3", 
+            "data": [
+                "/dev/sda2"
+            ], 
+            "other": [
+                "/dev/mapper/Var_Var", 
+                "/dev/mapper/Home_Home", 
+                "/dev/sda1"
+            ], 
+            "saved_caches": "/dev/mapper/LogVol00_Root"
+        }, 
+        "rack": "RAC1", 
+        "rpc_ip": "10.27.34.11", 
+        "streaming": {}, 
+        "task_progress": {}, 
+        "token": "5026878890142769188", 
+        "vnodes": true
+    }, 
+    "10.27.34.12": {
+        "agent_jvm_version": "1.8.0_45", 
+        "alias": null, 
+        "data_held": 51839134408.0, 
+        "dc": "DC1", 
+        "devices": {
+            "commitlog": "sda", 
+            "data": [
+                "sda"
+            ], 
+            "other": [
+                "dm_2", 
+                "dm_1"
+            ], 
+            "saved_caches": "dm_0"
+        }, 
+        "ec2": {
+            "ami-id": null, 
+            "instance-id": null, 
+            "instance-type": null, 
+            "placement": null
+        }, 
+        "has_jna": true, 
+        "hostname": "AIQHDB02.ebusiness.msp.local", 
+        "inmemory": {
+            "max": 6733745356, 
+            "tables": [], 
+            "version": 2
+        }, 
+        "last_seen": 0, 
+        "load": 0.56999999999999995, 
+        "mode": "normal", 
+        "network_interfaces": [
+            "lo", 
+            "eth0"
+        ], 
+        "node_ip": "10.27.34.12", 
+        "node_version": {
+            "cassandra": "2.1.8.689", 
+            "dse": "4.7.3", 
+            "jobtracker": null, 
+            "search": null, 
+            "spark": {
+                "master": null, 
+                "version": null, 
+                "worker": null
+            }, 
+            "tasktracker": null
+        }, 
+        "num_procs": 8, 
+        "os": "linux", 
+        "partitions": {
+            "commitlog": "/dev/sda3", 
+            "data": [
+                "/dev/sda2"
+            ], 
+            "other": [
+                "/dev/mapper/Var_Var", 
+                "/dev/mapper/Home_Home", 
+                "/dev/sda1"
+            ], 
+            "saved_caches": "/dev/mapper/LogVol00_Root"
+        }, 
+        "rack": "RAC1", 
+        "rpc_ip": "10.27.34.12", 
+        "streaming": {}, 
+        "task_progress": {}, 
+        "token": "-2532185499723931060", 
+        "vnodes": true
+    }, 
+    "10.27.34.13": {
+        "agent_jvm_version": "1.8.0_45", 
+        "alias": null, 
+        "data_held": 52655267929.0, 
+        "dc": "DC1", 
+        "devices": {
+            "commitlog": "sda", 
+            "data": [
+                "sda"
+            ], 
+            "other": [
+                "dm_2", 
+                "dm_1"
+            ], 
+            "saved_caches": "dm_0"
+        }, 
+        "ec2": {
+            "ami-id": null, 
+            "instance-id": null, 
+            "instance-type": null, 
+            "placement": null
+        }, 
+        "has_jna": true, 
+        "hostname": "AIQHDB03.ebusiness.msp.local", 
+        "inmemory": {
+            "max": 6733745356, 
+            "tables": [], 
+            "version": 2
+        }, 
+        "last_seen": 0, 
+        "load": 0.72999999999999998, 
+        "mode": "normal", 
+        "network_interfaces": [
+            "lo", 
+            "eth0"
+        ], 
+        "node_ip": "10.27.34.13", 
+        "node_version": {
+            "cassandra": "2.1.8.689", 
+            "dse": "4.7.3", 
+            "jobtracker": null, 
+            "search": null, 
+            "spark": {
+                "master": null, 
+                "version": null, 
+                "worker": null
+            }, 
+            "tasktracker": null
+        }, 
+        "num_procs": 8, 
+        "os": "linux", 
+        "partitions": {
+            "commitlog": "/dev/sda3", 
+            "data": [
+                "/dev/sda2"
+            ], 
+            "other": [
+                "/dev/mapper/Var_Var", 
+                "/dev/mapper/Home_Home", 
+                "/dev/sda1"
+            ], 
+            "saved_caches": "/dev/mapper/LogVol00_Root"
+        }, 
+        "rack": "RAC1", 
+        "rpc_ip": "10.27.34.13", 
+        "streaming": {}, 
+        "task_progress": {}, 
+        "token": "229326050101215256", 
+        "vnodes": true
+    }, 
+    "10.27.34.14": {
+        "agent_jvm_version": "1.8.0_45", 
+        "alias": null, 
+        "data_held": 54738975366.0, 
+        "dc": "DC1", 
+        "devices": {
+            "commitlog": "sda", 
+            "data": [
+                "sda"
+            ], 
+            "other": [
+                "dm_2", 
+                "dm_1"
+            ], 
+            "saved_caches": "dm_0"
+        }, 
+        "ec2": {
+            "ami-id": null, 
+            "instance-id": null, 
+            "instance-type": null, 
+            "placement": null
+        }, 
+        "has_jna": true, 
+        "hostname": "AIQHDB04.ebusiness.msp.local", 
+        "inmemory": {
+            "max": 6733745356, 
+            "tables": [], 
+            "version": 2
+        }, 
+        "last_seen": 0, 
+        "load": 0.51000000000000001, 
+        "mode": "normal", 
+        "network_interfaces": [
+            "lo", 
+            "eth0"
+        ], 
+        "node_ip": "10.27.34.14", 
+        "node_version": {
+            "cassandra": "2.1.8.689", 
+            "dse": "4.7.3", 
+            "jobtracker": null, 
+            "search": null, 
+            "spark": {
+                "master": null, 
+                "version": null, 
+                "worker": null
+            }, 
+            "tasktracker": null
+        }, 
+        "num_procs": 8, 
+        "os": "linux", 
+        "partitions": {
+            "commitlog": "/dev/sda3", 
+            "data": [
+                "/dev/sda2"
+            ], 
+            "other": [
+                "/dev/mapper/Var_Var", 
+                "/dev/mapper/Home_Home", 
+                "/dev/sda1"
+            ], 
+            "saved_caches": "/dev/mapper/LogVol00_Root"
+        }, 
+        "rack": "RAC1", 
+        "rpc_ip": "10.27.34.14", 
+        "streaming": {}, 
+        "task_progress": {}, 
+        "token": "-7001848070293061601", 
+        "vnodes": true
+    }, 
+    "10.27.34.15": {
+        "agent_jvm_version": "1.8.0_45", 
+        "alias": null, 
+        "data_held": 56151242954.0, 
+        "dc": "DC1", 
+        "devices": {
+            "commitlog": "sda", 
+            "data": [
+                "sda"
+            ], 
+            "other": [
+                "dm_2", 
+                "dm_1"
+            ], 
+            "saved_caches": "dm_0"
+        }, 
+        "ec2": {
+            "ami-id": null, 
+            "instance-id": null, 
+            "instance-type": null, 
+            "placement": null
+        }, 
+        "has_jna": true, 
+        "hostname": "AIQHDB05.ebusiness.msp.local", 
+        "inmemory": {
+            "max": 6733745356, 
+            "tables": [], 
+            "version": 2
+        }, 
+        "last_seen": 0, 
+        "load": 0.40999999999999998, 
+        "mode": "normal", 
+        "network_interfaces": [
+            "lo", 
+            "eth0"
+        ], 
+        "node_ip": "10.27.34.15", 
+        "node_version": {
+            "cassandra": "2.1.8.689", 
+            "dse": "4.7.3", 
+            "jobtracker": null, 
+            "search": null, 
+            "spark": {
+                "master": null, 
+                "version": null, 
+                "worker": null
+            }, 
+            "tasktracker": null
+        }, 
+        "num_procs": 8, 
+        "os": "linux", 
+        "partitions": {
+            "commitlog": "/dev/sda3", 
+            "data": [
+                "/dev/sda2"
+            ], 
+            "other": [
+                "/dev/mapper/Var_Var", 
+                "/dev/mapper/Home_Home", 
+                "/dev/sda1"
+            ], 
+            "saved_caches": "/dev/mapper/LogVol00_Root"
+        }, 
+        "rack": "RAC1", 
+        "rpc_ip": "10.27.34.15", 
+        "streaming": {}, 
+        "task_progress": {}, 
+        "token": "2515838444710232066", 
+        "vnodes": true
+    }, 
+    "10.27.34.16": {
+        "agent_jvm_version": "1.8.0_45", 
+        "alias": null, 
+        "data_held": 53484149604.0, 
+        "dc": "DC1", 
+        "devices": {
+            "commitlog": "sda", 
+            "data": [
+                "sda"
+            ], 
+            "other": [
+                "dm_2", 
+                "dm_1"
+            ], 
+            "saved_caches": "dm_0"
+        }, 
+        "ec2": {
+            "ami-id": null, 
+            "instance-id": null, 
+            "instance-type": null, 
+            "placement": null
+        }, 
+        "has_jna": true, 
+        "hostname": "AIQHDB06.ebusiness.msp.local", 
+        "inmemory": {
+            "max": 6733745356, 
+            "tables": [], 
+            "version": 2
+        }, 
+        "last_seen": 0, 
+        "load": 0.56999999999999995, 
+        "mode": "normal", 
+        "network_interfaces": [
+            "lo", 
+            "eth0"
+        ], 
+        "node_ip": "10.27.34.16", 
+        "node_version": {
+            "cassandra": "2.1.8.689", 
+            "dse": "4.7.3", 
+            "jobtracker": null, 
+            "search": null, 
+            "spark": {
+                "master": null, 
+                "version": null, 
+                "worker": null
+            }, 
+            "tasktracker": null
+        }, 
+        "num_procs": 8, 
+        "os": "linux", 
+        "partitions": {
+            "commitlog": "/dev/sda3", 
+            "data": [
+                "/dev/sda2"
+            ], 
+            "other": [
+                "/dev/mapper/Var_Var", 
+                "/dev/mapper/Home_Home", 
+                "/dev/sda1"
+            ], 
+            "saved_caches": "/dev/mapper/LogVol00_Root"
+        }, 
+        "rack": "RAC1", 
+        "rpc_ip": "10.27.34.16", 
+        "streaming": {}, 
+        "task_progress": {}, 
+        "token": "4276274080191862109", 
+        "vnodes": true
+    }, 
+    "10.27.34.17": {
+        "agent_jvm_version": "1.8.0_45", 
+        "alias": null, 
+        "data_held": 51928278188.0, 
+        "dc": "DC1", 
+        "devices": {
+            "commitlog": "sda", 
+            "data": [
+                "sda"
+            ], 
+            "other": [
+                "dm_2", 
+                "dm_1"
+            ], 
+            "saved_caches": "dm_0"
+        }, 
+        "ec2": {
+            "ami-id": null, 
+            "instance-id": null, 
+            "instance-type": null, 
+            "placement": null
+        }, 
+        "has_jna": true, 
+        "hostname": "AIQHDB07.ebusiness.msp.local", 
+        "inmemory": {
+            "max": 6733745356, 
+            "tables": [], 
+            "version": 2
+        }, 
+        "last_seen": 0, 
+        "load": 0.95999999999999996, 
+        "mode": "normal", 
+        "network_interfaces": [
+            "lo", 
+            "eth1"
+        ], 
+        "node_ip": "10.27.34.17", 
+        "node_version": {
+            "cassandra": "2.1.8.689", 
+            "dse": "4.7.3", 
+            "jobtracker": null, 
+            "search": null, 
+            "spark": {
+                "master": null, 
+                "version": null, 
+                "worker": null
+            }, 
+            "tasktracker": null
+        }, 
+        "num_procs": 8, 
+        "os": "linux", 
+        "partitions": {
+            "commitlog": "/dev/sda3", 
+            "data": [
+                "/dev/sda2"
+            ], 
+            "other": [
+                "/dev/mapper/Var_Var", 
+                "/dev/mapper/Home_Home", 
+                "/dev/sda1"
+            ], 
+            "saved_caches": "/dev/mapper/LogVol00_Root"
+        }, 
+        "rack": "RAC1", 
+        "rpc_ip": "10.27.34.17", 
+        "streaming": {}, 
+        "task_progress": {}, 
+        "token": "3668494756892164115", 
+        "vnodes": true
+    }, 
+    "10.27.34.19": {
+        "agent_jvm_version": "1.8.0_45", 
+        "alias": null, 
+        "data_held": 55375425046.0, 
+        "dc": "DC1", 
+        "devices": {
+            "commitlog": "sda", 
+            "data": [
+                "sda"
+            ], 
+            "other": [
+                "dm_2", 
+                "dm_1"
+            ], 
+            "saved_caches": "dm_0"
+        }, 
+        "ec2": {
+            "ami-id": null, 
+            "instance-id": null, 
+            "instance-type": null, 
+            "placement": null
+        }, 
+        "has_jna": true, 
+        "hostname": "AIQHDB09", 
+        "inmemory": {
+            "max": 6733745356, 
+            "tables": [], 
+            "version": 2
+        }, 
+        "last_seen": 0, 
+        "load": 0.39000000000000001, 
+        "mode": "normal", 
+        "network_interfaces": [
+            "lo", 
+            "eth1"
+        ], 
+        "node_ip": "10.27.34.19", 
+        "node_version": {
+            "cassandra": "2.1.8.689", 
+            "dse": "4.7.3", 
+            "jobtracker": null, 
+            "search": null, 
+            "spark": {
+                "master": null, 
+                "version": null, 
+                "worker": null
+            }, 
+            "tasktracker": null
+        }, 
+        "num_procs": 8, 
+        "os": "linux", 
+        "partitions": {
+            "commitlog": "/dev/sda3", 
+            "data": [
+                "/dev/sda2"
+            ], 
+            "other": [
+                "/dev/mapper/Var_Var", 
+                "/dev/mapper/Home_Home", 
+                "/dev/sda1"
+            ], 
+            "saved_caches": "/dev/mapper/LogVol00_Root"
+        }, 
+        "rack": "RAC1", 
+        "rpc_ip": "10.27.34.19", 
+        "streaming": {}, 
+        "task_progress": {}, 
+        "token": "4901763533608490329", 
+        "vnodes": true
+    }, 
+    "10.27.34.21": {
+        "agent_jvm_version": "1.8.0_45", 
+        "alias": null, 
+        "data_held": 51814623124.0, 
+        "dc": "DC1", 
+        "devices": {
+            "commitlog": "sda", 
+            "data": [
+                "sda"
+            ], 
+            "other": [
+                "dm_2", 
+                "dm_1"
+            ], 
+            "saved_caches": "dm_0"
+        }, 
+        "ec2": {
+            "ami-id": null, 
+            "instance-id": null, 
+            "instance-type": null, 
+            "placement": null
+        }, 
+        "has_jna": true, 
+        "hostname": "AIQHDB11", 
+        "inmemory": {
+            "max": 6733745356, 
+            "tables": [], 
+            "version": 2
+        }, 
+        "last_seen": 0, 
+        "load": 0.54000000000000004, 
+        "mode": "normal", 
+        "network_interfaces": [
+            "lo", 
+            "eth1"
+        ], 
+        "node_ip": "10.27.34.21", 
+        "node_version": {
+            "cassandra": "2.1.8.689", 
+            "dse": "4.7.3", 
+            "jobtracker": null, 
+            "search": null, 
+            "spark": {
+                "master": null, 
+                "version": null, 
+                "worker": null
+            }, 
+            "tasktracker": null
+        }, 
+        "num_procs": 8, 
+        "os": "linux", 
+        "partitions": {
+            "commitlog": "/dev/sda3", 
+            "data": [
+                "/dev/sda2"
+            ], 
+            "other": [
+                "/dev/mapper/Var_Var", 
+                "/dev/mapper/Home_Home", 
+                "/dev/sda1"
+            ], 
+            "saved_caches": "/dev/mapper/LogVol00_Root"
+        }, 
+        "rack": "RAC1", 
+        "rpc_ip": "10.27.34.21", 
+        "streaming": {}, 
+        "task_progress": {}, 
+        "token": "-2384966101325750190", 
+        "vnodes": true
+    }, 
+    "10.27.34.22": {
+        "agent_jvm_version": "1.8.0_45", 
+        "alias": null, 
+        "data_held": 54545879691.0, 
+        "dc": "DC1", 
+        "devices": {
+            "commitlog": "sda", 
+            "data": [
+                "sda"
+            ], 
+            "other": [
+                "dm_2", 
+                "dm_1"
+            ], 
+            "saved_caches": "dm_0"
+        }, 
+        "ec2": {
+            "ami-id": null, 
+            "instance-id": null, 
+            "instance-type": null, 
+            "placement": null
+        }, 
+        "has_jna": true, 
+        "hostname": "AIQHDB12", 
+        "inmemory": {
+            "max": 6733745356, 
+            "tables": [], 
+            "version": 2
+        }, 
+        "last_seen": 0, 
+        "load": 0.81000000000000005, 
+        "mode": "normal", 
+        "network_interfaces": [
+            "lo", 
+            "eth1"
+        ], 
+        "node_ip": "10.27.34.22", 
+        "node_version": {
+            "cassandra": "2.1.8.689", 
+            "dse": "4.7.3", 
+            "jobtracker": null, 
+            "search": null, 
+            "spark": {
+                "master": null, 
+                "version": null, 
+                "worker": null
+            }, 
+            "tasktracker": null
+        }, 
+        "num_procs": 8, 
+        "os": "linux", 
+        "partitions": {
+            "commitlog": "/dev/sda3", 
+            "data": [
+                "/dev/sda2"
+            ], 
+            "other": [
+                "/dev/mapper/Var_Var", 
+                "/dev/mapper/Home_Home", 
+                "/dev/sda1"
+            ], 
+            "saved_caches": "/dev/mapper/LogVol00_Root"
+        }, 
+        "rack": "RAC1", 
+        "rpc_ip": "10.27.34.22", 
+        "streaming": {}, 
+        "task_progress": {}, 
+        "token": "-7357339309050060654", 
+        "vnodes": true
+    }, 
+    "10.27.34.51": {
+        "agent_jvm_version": "1.8.0_45", 
+        "alias": null, 
+        "data_held": 89746347161.0, 
+        "dc": "DC2", 
+        "devices": {
+            "commitlog": "sdc", 
+            "data": [
+                "sde"
+            ], 
+            "other": [
+                "dm_2", 
+                "dm_1", 
+                "sdd", 
+                "sda", 
+                "sdb", 
+                "scd0"
+            ], 
+            "saved_caches": "dm_0"
+        }, 
+        "ec2": {
+            "ami-id": null, 
+            "instance-id": null, 
+            "instance-type": null, 
+            "placement": null
+        }, 
+        "has_jna": true, 
+        "hostname": "DC2IQHDBS01V", 
+        "inmemory": {
+            "max": 6732906496, 
+            "tables": [], 
+            "version": 2
+        }, 
+        "last_seen": 0, 
+        "load": 2.6600000000000001, 
+        "mode": "normal", 
+        "network_interfaces": [
+            "lo", 
+            "eth0"
+        ], 
+        "node_ip": "10.27.34.51", 
+        "node_version": {
+            "cassandra": "2.1.8.689", 
+            "dse": "4.7.3", 
+            "jobtracker": null, 
+            "search": null, 
+            "spark": {
+                "master": null, 
+                "version": null, 
+                "worker": null
+            }, 
+            "tasktracker": null
+        }, 
+        "num_procs": 8, 
+        "os": "linux", 
+        "partitions": {
+            "commitlog": "/dev/sdc1", 
+            "data": [
+                "/dev/sde1"
+            ], 
+            "other": [
+                "/dev/mapper/volgrp01_var", 
+                "/dev/mapper/volgrp01_home", 
+                "/dev/sda1"
+            ], 
+            "saved_caches": "/dev/mapper/volgrp01_root"
+        }, 
+        "rack": "RAC1", 
+        "rpc_ip": "10.27.34.51", 
+        "streaming": {}, 
+        "task_progress": {}, 
+        "token": "5114102062220648451", 
+        "vnodes": true
+    }, 
+    "10.27.34.52": {
+        "agent_jvm_version": "1.8.0_45", 
+        "alias": null, 
+        "data_held": 94171092455.0, 
+        "dc": "DC2", 
+        "devices": {
+            "commitlog": "sdc", 
+            "data": [
+                "sde"
+            ], 
+            "other": [
+                "dm_2", 
+                "dm_1", 
+                "sdd", 
+                "sdb", 
+                "sda", 
+                "scd0"
+            ], 
+            "saved_caches": "dm_0"
+        }, 
+        "ec2": {
+            "ami-id": null, 
+            "instance-id": null, 
+            "instance-type": null, 
+            "placement": null
+        }, 
+        "has_jna": true, 
+        "hostname": "DC2IQHDBS02V", 
+        "inmemory": {
+            "max": 6732906496, 
+            "tables": [], 
+            "version": 2
+        }, 
+        "last_seen": 0, 
+        "load": 1.6399999999999999, 
+        "mode": "normal", 
+        "network_interfaces": [
+            "lo", 
+            "eth0"
+        ], 
+        "node_ip": "10.27.34.52", 
+        "node_version": {
+            "cassandra": "2.1.8.689", 
+            "dse": "4.7.3", 
+            "jobtracker": null, 
+            "search": null, 
+            "spark": {
+                "master": null, 
+                "version": null, 
+                "worker": null
+            }, 
+            "tasktracker": null
+        }, 
+        "num_procs": 8, 
+        "os": "linux", 
+        "partitions": {
+            "commitlog": "/dev/sdc1", 
+            "data": [
+                "/dev/sde1"
+            ], 
+            "other": [
+                "/dev/mapper/volgrp01_var", 
+                "/dev/mapper/volgrp01_home", 
+                "/dev/sda1"
+            ], 
+            "saved_caches": "/dev/mapper/volgrp01_root"
+        }, 
+        "rack": "RAC1", 
+        "rpc_ip": "10.27.34.52", 
+        "streaming": {
+            "10.27.34.54": 1.0
+        }, 
+        "task_progress": {}, 
+        "token": "1485662745360534798", 
+        "vnodes": true
+    }, 
+    "10.27.34.53": {
+        "agent_jvm_version": "1.8.0_45", 
+        "alias": null, 
+        "data_held": 94804850688.0, 
+        "dc": "DC2", 
+        "devices": {
+            "commitlog": "sdc", 
+            "data": [
+                "sde"
+            ], 
+            "other": [
+                "dm_2", 
+                "dm_1", 
+                "sdd", 
+                "sdb", 
+                "sda"
+            ], 
+            "saved_caches": "dm_0"
+        }, 
+        "ec2": {
+            "ami-id": null, 
+            "instance-id": null, 
+            "instance-type": null, 
+            "placement": null
+        }, 
+        "has_jna": true, 
+        "hostname": "DC2IQHDBS03V", 
+        "inmemory": {
+            "max": 6732906496, 
+            "tables": [], 
+            "version": 2
+        }, 
+        "last_seen": 0, 
+        "load": 1.5600000000000001, 
+        "mode": "normal", 
+        "network_interfaces": [
+            "lo", 
+            "eth0"
+        ], 
+        "node_ip": "10.27.34.53", 
+        "node_version": {
+            "cassandra": "2.1.8.689", 
+            "dse": "4.7.3", 
+            "jobtracker": null, 
+            "search": null, 
+            "spark": {
+                "master": null, 
+                "version": null, 
+                "worker": null
+            }, 
+            "tasktracker": null
+        }, 
+        "num_procs": 8, 
+        "os": "linux", 
+        "partitions": {
+            "commitlog": "/dev/sdc1", 
+            "data": [
+                "/dev/sde1"
+            ], 
+            "other": [
+                "/dev/mapper/volgrp01_var", 
+                "/dev/mapper/volgrp01_home", 
+                "/dev/sda1"
+            ], 
+            "saved_caches": "/dev/mapper/volgrp01_root"
+        }, 
+        "rack": "RAC1", 
+        "rpc_ip": "10.27.34.53", 
+        "streaming": {
+            "10.27.34.54": 1.0
+        }, 
+        "task_progress": {}, 
+        "token": "8746995441678213128", 
+        "vnodes": true
+    }, 
+    "10.27.34.54": {
+        "agent_jvm_version": "1.8.0_45", 
+        "alias": null, 
+        "data_held": 27729424196.0, 
+        "dc": "DC2", 
+        "devices": {
+            "commitlog": "sdc", 
+            "data": [
+                "sde"
+            ], 
+            "other": [
+                "dm_2", 
+                "dm_1", 
+                "sdd", 
+                "sdb", 
+                "sda"
+            ], 
+            "saved_caches": "dm_0"
+        }, 
+        "ec2": {
+            "ami-id": null, 
+            "instance-id": null, 
+            "instance-type": null, 
+            "placement": null
+        }, 
+        "has_jna": true, 
+        "hostname": "DC2IQHDBS04V", 
+        "inmemory": {
+            "max": 6732906496, 
+            "tables": [], 
+            "version": 2
+        }, 
+        "last_seen": 0, 
+        "load": 0.75, 
+        "mode": "normal", 
+        "network_interfaces": [
+            "lo", 
+            "eth0"
+        ], 
+        "node_ip": "10.27.34.54", 
+        "node_version": {
+            "cassandra": "2.1.8.689", 
+            "dse": "4.7.3", 
+            "jobtracker": null, 
+            "search": null, 
+            "spark": {
+                "master": null, 
+                "version": null, 
+                "worker": null
+            }, 
+            "tasktracker": null
+        }, 
+        "num_procs": 8, 
+        "os": "linux", 
+        "partitions": {
+            "commitlog": "/dev/sdc1", 
+            "data": [
+                "/dev/sde1"
+            ], 
+            "other": [
+                "/dev/mapper/volgrp01_var", 
+                "/dev/mapper/volgrp01_home", 
+                "/dev/sda1"
+            ], 
+            "saved_caches": "/dev/mapper/volgrp01_root"
+        }, 
+        "rack": "RAC1", 
+        "rpc_ip": "10.27.34.54", 
+        "streaming": {}, 
+        "task_progress": {}, 
+        "token": "5967511492055162901", 
+        "vnodes": true
+    }, 
+    "10.27.34.55": {
+        "agent_jvm_version": "1.8.0_45", 
+        "alias": null, 
+        "data_held": 89151234740.0, 
+        "dc": "DC2", 
+        "devices": {
+            "commitlog": "sdc", 
+            "data": [
+                "sde"
+            ], 
+            "other": [
+                "dm_2", 
+                "dm_1", 
+                "sdd", 
+                "sdb", 
+                "sda"
+            ], 
+            "saved_caches": "dm_0"
+        }, 
+        "ec2": {
+            "ami-id": null, 
+            "instance-id": null, 
+            "instance-type": null, 
+            "placement": null
+        }, 
+        "has_jna": true, 
+        "hostname": "DC2IQHDBS05V", 
+        "inmemory": {
+            "max": 6732906496, 
+            "tables": [], 
+            "version": 2
+        }, 
+        "last_seen": 0, 
+        "load": 1.9299999999999999, 
+        "mode": "normal", 
+        "network_interfaces": [
+            "lo", 
+            "eth0"
+        ], 
+        "node_ip": "10.27.34.55", 
+        "node_version": {
+            "cassandra": "2.1.8.689", 
+            "dse": "4.7.3", 
+            "jobtracker": null, 
+            "search": null, 
+            "spark": {
+                "master": null, 
+                "version": null, 
+                "worker": null
+            }, 
+            "tasktracker": null
+        }, 
+        "num_procs": 8, 
+        "os": "linux", 
+        "partitions": {
+            "commitlog": "/dev/sdc1", 
+            "data": [
+                "/dev/sde1"
+            ], 
+            "other": [
+                "/dev/mapper/volgrp01_var", 
+                "/dev/mapper/volgrp01_home", 
+                "/dev/sda1"
+            ], 
+            "saved_caches": "/dev/mapper/volgrp01_root"
+        }, 
+        "rack": "RAC1", 
+        "rpc_ip": "10.27.34.55", 
+        "streaming": {
+            "10.27.34.56": 1.0
+        }, 
+        "task_progress": {}, 
+        "token": "-5003841201214046192", 
+        "vnodes": true
+    }, 
+    "10.27.34.56": {
+        "agent_jvm_version": "1.8.0_45", 
+        "alias": null, 
+        "data_held": 81915708825.0, 
+        "dc": "DC2", 
+        "devices": {
+            "commitlog": "sdc", 
+            "data": [
+                "sde"
+            ], 
+            "other": [
+                "dm_2", 
+                "dm_1", 
+                "sdd", 
+                "sdb", 
+                "sda"
+            ], 
+            "saved_caches": "dm_0"
+        }, 
+        "ec2": {
+            "ami-id": null, 
+            "instance-id": null, 
+            "instance-type": null, 
+            "placement": null
+        }, 
+        "has_jna": true, 
+        "hostname": "DC2IQHDBS06V", 
+        "inmemory": {
+            "max": 6732906496, 
+            "tables": [], 
+            "version": 2
+        }, 
+        "last_seen": 0, 
+        "load": 0.90000000000000002, 
+        "mode": "normal", 
+        "network_interfaces": [
+            "lo", 
+            "eth0"
+        ], 
+        "node_ip": "10.27.34.56", 
+        "node_version": {
+            "cassandra": "2.1.8.689", 
+            "dse": "4.7.3", 
+            "jobtracker": null, 
+            "search": null, 
+            "spark": {
+                "master": null, 
+                "version": null, 
+                "worker": null
+            }, 
+            "tasktracker": null
+        }, 
+        "num_procs": 8, 
+        "os": "linux", 
+        "partitions": {
+            "commitlog": "/dev/sdc1", 
+            "data": [
+                "/dev/sde1"
+            ], 
+            "other": [
+                "/dev/mapper/volgrp01_var", 
+                "/dev/mapper/volgrp01_home", 
+                "/dev/sda1"
+            ], 
+            "saved_caches": "/dev/mapper/volgrp01_root"
+        }, 
+        "rack": "RAC1", 
+        "rpc_ip": "10.27.34.56", 
+        "streaming": {}, 
+        "task_progress": {}, 
+        "token": "1449128698133135387", 
+        "vnodes": true
+    }
+}

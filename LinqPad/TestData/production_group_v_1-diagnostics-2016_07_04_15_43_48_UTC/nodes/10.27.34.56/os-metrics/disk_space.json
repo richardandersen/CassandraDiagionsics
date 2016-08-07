@@ -1,0 +1,21 @@
+{"percentage":
+ {"\/dev\/mapper\/volgrp01_var":8,
+  "\/dev\/mapper\/volgrp01_home":1,
+  "\/dev\/sde1":9,
+  "\/dev\/sdc1":18,
+  "\/dev\/sda1":16,
+  "\/dev\/mapper\/volgrp01_root":23},
+ "used":
+ {"\/dev\/mapper\/volgrp01_var":1,
+  "\/dev\/mapper\/volgrp01_home":1,
+  "\/dev\/sde1":86,
+  "\/dev\/sdc1":9,
+  "\/dev\/sda1":1,
+  "\/dev\/mapper\/volgrp01_root":4},
+ "free":
+ {"\/dev\/mapper\/volgrp01_var":9,
+  "\/dev\/mapper\/volgrp01_home":24,
+  "\/dev\/sde1":872,
+  "\/dev\/sdc1":39,
+  "\/dev\/sda1":1,
+  "\/dev\/mapper\/volgrp01_root":11}}

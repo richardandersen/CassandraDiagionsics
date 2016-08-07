@@ -1,0 +1,10 @@
+Mode: NORMAL
+Repair 6c3191b0-2d6a-11e6-9b86-b34ea71c745f
+Repair 597dcd70-2d71-11e6-b43a-b34ea71c745f
+Read Repair Statistics:
+Attempted: 65293
+Mismatch (Blocking): 0
+Mismatch (Background): 33
+Pool Name                    Active   Pending      Completed
+Commands                        n/a         0      441048657
+Responses                       n/a         0      536321640

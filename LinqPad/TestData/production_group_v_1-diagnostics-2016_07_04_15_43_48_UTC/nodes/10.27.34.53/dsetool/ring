@@ -1,0 +1,20 @@
+Note: Ownership information does not include topology, please specify a keyspace. 
+Address          DC           Rack         Workload         Status  State    Load             Owns                 VNodes                                      
+10.27.34.17      DC1          RAC1         Cassandra        Up      Normal   48.36 GB         6.31%                256                                         
+10.27.34.54      DC2          RAC1         Cassandra        Up      Normal   25.82 GB         6.84%                256                                         
+10.27.34.15      DC1          RAC1         Cassandra        Up      Normal   52.29 GB         6.09%                256                                         
+10.27.34.52      DC2          RAC1         Cassandra        Up      Normal   87.7 GB          5.71%                256                                         
+10.27.34.16      DC1          RAC1         Cassandra        Up      Normal   49.75 GB         6.41%                256                                         
+10.27.34.13      DC1          RAC1         Cassandra        Up      Normal   49.04 GB         6.37%                256                                         
+10.27.34.12      DC1          RAC1         Cassandra        Up      Normal   48.28 GB         6.43%                256                                         
+10.27.34.53      DC2          RAC1         Cassandra        Up      Normal   88.29 GB         6.02%                256                                         
+10.27.34.56      DC2          RAC1         Cassandra        Up      Normal   76.29 GB         6.10%                256                                         
+10.27.34.22      DC1          RAC1         Cassandra        Up      Normal   50.79 GB         6.15%                256                                         
+10.27.34.51      DC2          RAC1         Cassandra        Up      Normal   83.52 GB         6.63%                256                                         
+10.27.34.14      DC1          RAC1         Cassandra        Up      Normal   50.98 GB         6.32%                256                                         
+10.27.34.21      DC1          RAC1         Cassandra        Up      Normal   48.26 GB         5.79%                256                                         
+10.27.34.55      DC2          RAC1         Cassandra        Up      Normal   83.03 GB         6.45%                256                                         
+10.27.34.19      DC1          RAC1         Cassandra        Up      Normal   51.57 GB         6.23%                256                                         
+10.27.34.11      DC1          RAC1         Cassandra        Up      Normal   47.33 GB         6.14%                256                                         
+Warning:  Node 10.27.34.54 is serving 1.20 times the token space of node 10.27.34.52, which means it will be using 1.20 times more disk space and network bandwidth. If this is unintentional, check out http://wiki.apache.org/cassandra/Operations#Ring_management
+Warning:  Node 10.27.34.12 is serving 1.11 times the token space of node 10.27.34.21, which means it will be using 1.11 times more disk space and network bandwidth. If this is unintentional, check out http://wiki.apache.org/cassandra/Operations#Ring_management

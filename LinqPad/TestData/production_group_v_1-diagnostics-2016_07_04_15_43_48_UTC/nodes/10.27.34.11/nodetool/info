@@ -1,0 +1,16 @@
+ID                     : 286872d8-036b-48d1-a615-0f0144df704f
+Gossip active          : true
+Thrift active          : true
+Native Transport active: true
+Load                   : 47.33 GB
+Generation No          : 1464740356
+Uptime (seconds)       : 2906732
+Heap Memory (MB)       : 4859.46 / 7948.00
+Off Heap Memory (MB)   : 661.17
+Data Center            : DC1
+Rack                   : RAC1
+Exceptions             : 36
+Key Cache              : entries 70890, size 44.38 MB, capacity 100 MB, 2754872 hits, 2831335 requests, 0.973 recent hit rate, 14400 save period in seconds
+Row Cache              : entries 0, size 0 bytes, capacity 0 bytes, 0 hits, 0 requests, NaN recent hit rate, 0 save period in seconds
+Counter Cache          : entries 0, size 0 bytes, capacity 50 MB, 0 hits, 0 requests, NaN recent hit rate, 7200 save period in seconds
+Token                  : (invoke with -T/--tokens to see all 256 tokens)

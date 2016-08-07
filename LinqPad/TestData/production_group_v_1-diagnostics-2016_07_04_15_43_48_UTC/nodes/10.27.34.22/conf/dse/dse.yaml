@@ -1,0 +1,44 @@
+cluster_summary_stats_options: {enabled: false, refresh_rate_ms: 10000}
+solr_request_handler_metrics_options: {enabled: false, ttl_seconds: 604800, refresh_rate_ms: 60000}
+solr_latency_snapshot_options: {enabled: false, ttl_seconds: 604800, refresh_rate_ms: 60000}
+initial_spark_worker_resources: 0.7
+resource_level_latency_tracking_options: {enabled: false, refresh_rate_ms: 10000}
+db_summary_stats_options: {enabled: false, refresh_rate_ms: 10000}
+system_info_encryption: {enabled: false, cipher_algorithm: AES, secret_key_strength: 128,
+  chunk_length_kb: 64, key_name: system_table_keytab}
+histogram_data_options: {enabled: true, refresh_rate_ms: 10000, retention_count: 3}
+solr_cache_stats_options: {enabled: false, ttl_seconds: 604800, refresh_rate_ms: 60000}
+spark_encryption_options: {enabled: false, keystore: .keystore, keystore_password: cassandra,
+  key_password: cassandra, truststore: .truststore, truststore_password: cassandra}
+config_encryption_active: false
+user_level_latency_tracking_options: {enabled: false, refresh_rate_ms: 10000, top_stats_limit: 100,
+  quantiles: false}
+cql_slow_log_options: {enabled: true, threshold_ms: 100, ttl_seconds: 86400, async_writers: 1}
+shard_transport_options: {type: netty, netty_server_port: 8984}
+config_encryption_key_name: system_key
+solr_slow_sub_query_log_options: {enabled: false, ttl_seconds: 604800, async_writers: 1,
+  threshold_ms: 100}
+hive_options: {insert_max_retries: 6, insert_retry_sleep_period: 50}
+solr_update_handler_metrics_options: {enabled: false, ttl_seconds: 604800, refresh_rate_ms: 60000}
+spark_cluster_info_options: {enabled: false, refresh_rate_ms: 10000}
+solr_index_stats_options: {enabled: false, ttl_seconds: 604800, refresh_rate_ms: 60000}
+max_memory_to_lock_fraction: 0.2
+hive_meta_store_enabled: true
+node_health_options: {enabled: false, refresh_rate_ms: 60000}
+audit_logging_options:
+  enabled: false
+  logger: SLF4JAuditWriter
+  retention_time: 0
+  cassandra_audit_writer_options: {mode: sync, batch_size: 50, flush_time: 500, num_writers: 10,
+    queue_size: 10000, write_consistency: QUORUM}
+kerberos_options: {keytab: resources/dse/conf/dse.keytab, service_principal: dse/_HOST@REALM,
+  http_principal: HTTP/_HOST@REALM, qop: auth}
+solr_indexing_error_log_options: {enabled: false, ttl_seconds: 604800, async_writers: 1}
+ttl_index_rebuild_options: {fixed_rate_period: 300, initial_delay: 20, max_docs_per_batch: 200}
+cql_system_info_options: {enabled: true, refresh_rate_ms: 10000}
+system_key_directory: /etc/dse/conf
+spark_application_info_options:
+  enabled: false
+  refresh_rate_ms: 10000
+  driver: {sink: false, connectorSource: false, jvmSource: false, stateSource: false}
+  executor: {sink: false, connectorSource: false, jvmSource: false}

@@ -1,0 +1,7 @@
+{"NonHeapMemoryUsage":
+ {"committed":94576640, "init":2555904, "max":-1, "used":92188576},
+ "HeapMemoryUsage":
+ {"committed":8331984896,
+  "init":8415870976,
+  "max":8331984896,
+  "used":339986632}}

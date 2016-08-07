@@ -1,0 +1,7 @@
+Cluster Information:
+	Name: production_group_v_1
+	Snitch: org.apache.cassandra.locator.DynamicEndpointSnitch
+	Partitioner: org.apache.cassandra.dht.Murmur3Partitioner
+	Schema versions:
+		f56944d0-aaed-3225-84fc-73737ae4c9d1: [10.27.34.56, 10.27.34.19, 10.27.34.51, 10.27.34.17, 10.27.34.16, 10.27.34.55, 10.27.34.22, 10.27.34.54, 10.27.34.21, 10.27.34.53, 10.27.34.52, 10.27.34.11, 10.27.34.15, 10.27.34.14, 10.27.34.13, 10.27.34.12]
+

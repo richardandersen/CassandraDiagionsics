@@ -1,0 +1,18 @@
+Connected to: "production_group_v_1" on 10.27.34.54/9160
+Welcome to Cassandra CLI version 2.1.8.689
+
+The CLI is deprecated and will be removed in Cassandra 2.2.  Consider migrating to cqlsh.
+CQL is fully backwards compatible with Thrift data; see http://www.datastax.com/dev/blog/thrift-to-cql3
+
+Type 'help;' or '?' for help.
+Type 'quit;' or 'exit;' to quit.
+
+[default@unknown] describe cluster;
+Cluster Information:
+   Name: production_group_v_1
+   Snitch: com.datastax.bdp.snitch.DseDelegateSnitch
+   Partitioner: org.apache.cassandra.dht.Murmur3Partitioner
+   Schema versions: 
+	f56944d0-aaed-3225-84fc-73737ae4c9d1: [10.27.34.56, 10.27.34.19, 10.27.34.51, 10.27.34.17, 10.27.34.16, 10.27.34.55, 10.27.34.22, 10.27.34.54, 10.27.34.21, 10.27.34.53, 10.27.34.52, 10.27.34.11, 10.27.34.15, 10.27.34.14, 10.27.34.13, 10.27.34.12]
+
+[default@unknown] quit;

@@ -1,0 +1,9 @@
+ntp_gettime() returns code 0 (OK)
+  time db2502b4.e6be8b6c  Mon, Jul  4 2016 16:43:48.901, (.901345137),
+  maximum error 625673 us, estimated error 1603 us, TAI offset 0
+ntp_adjtime() returns code 0 (OK)
+  modes 0x0 (),
+  offset -40.679 us, frequency 1.030 ppm, interval 1 s,
+  maximum error 625673 us, estimated error 1603 us,
+  status 0x6001 (PLL,NANO,MODE),
+  time constant 10, precision 0.001 us, tolerance 500 ppm,
