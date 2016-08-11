@@ -28,21 +28,35 @@
 
 void Main()
 {
-	var connectionString = "Contact Points=192.168.247.61"; //Change IP Address or a list of ip addresses seperated by a comma
-	var sshPrivateKeyFile = @"C:\Projects\DataStax\BootCamp\SSH Instructions and Keys\classkeySearch";
-	var localLocation = @"C:\Projects\DataStax\Files";
+	var connectionString = "Contact Points=192.168.247.133,192.168.247.61"; //Change IP Address or a list of ip addresses seperated by a comma
+	var localLocation = @"C:\Projects\DataStax\Training50\Files";
+
+	var sshNodeUserName = "root";
+	var sshNodeUserPasswod = string.Empty; //If null private keys are used
+	var sshPrivateKeyFiles = new string[] { @"C:\Projects\DataStax\bootcamp\SSH Instructions and Keys\classkeySearch" };
 
 	//var dataCenterName = "nearby"; //Change to DC Name
 
 	//Diagnostics.CassandraTraceSwitch.Level = System.Diagnostics.TraceLevel.Info;	
 
-//	var connectionInfoS = new ConnectionInfo("54.200.154.250",
-//													"root",
-//											 		new PrivateKeyAuthenticationMethod("root", new PrivateKeyFile[]{
-//																									new PrivateKeyFile(sshPrivateKeyFile)}));
+	AuthenticationMethod sshAuthenticationMethod;
+
+	if (sshNodeUserPasswod == null)
+	{
+		sshAuthenticationMethod = new PrivateKeyAuthenticationMethod("root", sshPrivateKeyFiles.Select(pkf => new PrivateKeyFile(pkf)).ToArray());
+	}
+	else
+	{
+		sshAuthenticationMethod = new PasswordAuthenticationMethod(sshNodeUserName, sshNodeUserPasswod);
+	}
+	
+	var connectionInfoS = new ConnectionInfo("192.168.247.133",
+													sshNodeUserName,
+											 		sshAuthenticationMethod);
 																									
-	//FileUpload(connectionInfoS, "Node2-v211", @"/etc/cassandra", localLocation, "cassandra.yaml", true);
-	//FileUpload(connectionInfoS, "Node2-v211", @"/etc/cassandra", localLocation, "cassandra-env.sh", true);
+	FileUpload(connectionInfoS, "Node2-v211", @"/etc/dse/cassandra", localLocation, "cassandra.yaml", true);
+	FileUpload(connectionInfoS, "Node2-v211", @"/etc/dse", localLocation, "dse.yaml", true);
+	FileUpload(connectionInfoS, "Node2-v211", @"/etc/dse/cassandra", localLocation, "cassandra-env.sh", true);
 	
 	using (var cluster = Cluster
 							.Builder()
@@ -203,14 +217,10 @@ public void DescribeKeySpaces(Cluster cluster, string keySpace)
 		//cluster.Metadata.GetKeyspace(keySpace).Dump();
 		foreach (var tblName in cluster.Metadata.GetTables(keySpace))
 		{
-			if (keySpace == "keyspace1")
-			{
-				cluster.Metadata.GetTable(keySpace, tblName).Dump();
-			}
-			//cluster.Metadata.GetTable(keySpace, tblName).Options.Dump();
+			cluster.Metadata.GetTable(keySpace, tblName).Options.Dump();
         }
 			//var rs = session.ex("describe keyspace keyspace1;");
 			
-			rs.First().Dump();
+			//rs.First().Dump();
 	}
 }
