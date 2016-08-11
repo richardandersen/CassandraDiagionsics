@@ -33,13 +33,15 @@
 
 
 const decimal BytesToMB = 1048576m;
-const int MaxRowInExcelWorkSheet = 50000;
-const int MaxRowInExcelWorkBook = 500000;
-static TimeSpan LogTimeSpanRange = new TimeSpan(5, 0, 0, 0); //Only import log entries for the past timespan (e.g., the last 5 days) based on LogCurrentDate.
-static DateTime LogCurrentDate = DateTime.MinValue; //DateTime.Now.Date; //If DateTime.MinValue all log entries are parsed
+const int MaxRowInExcelWorkSheet = 50000; //-1 disabled
+const int MaxRowInExcelWorkBook = 500000; //-1 disabled
+static TimeSpan LogTimeSpanRange = new TimeSpan(6, 0, 0, 0); //Only import log entries for the past timespan (e.g., the last 5 days) based on LogCurrentDate.
+static DateTime LogCurrentDate = new DateTime(2016, 07, 05); //DateTime.MinValue; //DateTime.Now.Date; //If DateTime.MinValue all log entries are parsed
+static int LogMaxRowsPerNode = 2000; //-1 disabled
 
 void Main()
 {
+	#region Configuration
 	//Location where this application will write or update the Excel file.
 	var excelFilePath = @"[DeskTop]\TestDiag.xlsx"; //<==== Should be updated
 	
@@ -65,6 +67,7 @@ void Main()
 	var diagnosticPath = @"[MyDocuments]\LINQPad Queries\DataStax\TestData\production_group_v_1-diagnostics-2016_07_04_15_43_48_UTC"; //@"C:\Users\richard\Desktop\datastax"; //<==== Should be Updated 
 	var diagnosticNoSubFolders = false; //<==== Should be Updated 
 	var parseLogs = true;
+	var parseNonLogs = true;
 	
 	//Excel Workbook names
 	var excelWorkBookRingInfo = "Node Information";
@@ -75,6 +78,7 @@ void Main()
 	var excelWorkBookDDLKeyspaces = "DDL Keyspaces";
 	var excelWorkBookDDLTables = "DDL Tables";
 	var excelWorkBookCompactionHist = "Compaction History";
+	var excelWorkBookYaml = "Settings-Yamls";
 
 	List<string> ignoreKeySpaces = new List<string>() { "dse_system", "system_auth", "system_traces", "system", "dse_perf"  }; //MUST BE IN LOWER CASe
 	List<string> cfstatsCreateMBColumns = new List<string>() { "memory used", "bytes", "space used", "data size"}; //MUST BE IN LOWER CASE -- CFStats attributes that contains these phrases/words will convert their values from bytes to MB in a separate Excel Column
@@ -82,17 +86,33 @@ void Main()
 	//Static Directory/File names
 	var diagNodeDir = "nodes";
 	var nodetoolDir = "nodetool";
+	var dseToolDir = "dsetool";
 	var logsDir = "logs";
 	var nodetoolRingFile = "ring";
+	var dsetoolRingFile = "ring";
 	var nodetoolCFStatsFile = "cfstats";
 	var nodetoolTPStatsFile = "tpstats";
 	var nodetoolInfoFile = "info";
 	var nodetoolCompactionHistFile = "compactionhistory";
 	var logCassandraDirSystemLog = @".\cassandra\system.log";
 	var logCassandraSystemLogFile = "system";
+	var confCassandraDir = @".\conf\cassandra";
+	var confCassandraFile = "cassandra.yaml";
+	var confCassandraType = "cassandra";
+	var confDSEDir = @".\conf\dse";
+	var confDSEYamlFile = "dse.yaml";
+	var confDSEYamlType = "dse yaml";
+	var confDSEType = "dse";
+	var confDSEFile = "dse";
+	var confCassandraYamlFileName = "cassandra";
+	var confDSEFileName = "dse";
 	var cqlDDLDirFile = @".\cqlsh\describe_schema";
 	var cqlDDLDirFileExt = @"*.cql";
 	var nodetoolCFHistogramsFile = "cfhistograms"; //this is based on keyspace and table and not sure of the format. HC doc has it as cfhistograms_keyspace_table.txt
+	
+	#endregion
+	
+	#region Local Variables
 	
 	//Local Variables used for processing
 	bool opsCtrDiag = false;	
@@ -105,9 +125,15 @@ void Main()
 	var dtTPStatsStack = new Common.Patterns.Collections.LockFree.Stack<System.Data.DataTable>();
 	var dtLogsStack = new Common.Patterns.Collections.LockFree.Stack<System.Data.DataTable>();
 	var dtCompHistStack = new Common.Patterns.Collections.LockFree.Stack<System.Data.DataTable>();
+	var listCYamlStack = new Common.Patterns.Collections.LockFree.Stack<List<YamlInfo>>();
+	var dtYaml = new System.Data.DataTable(excelWorkBookYaml);
 
 	var includeLogEntriesAfterThisTimeFrame = LogCurrentDate == DateTime.MinValue ? DateTime.MinValue : LogCurrentDate - LogTimeSpanRange;
-
+	
+	#endregion
+	
+	#region Parsing Files
+	
 	if (includeLogEntriesAfterThisTimeFrame != DateTime.MinValue)
 	{
 		Console.WriteLine("Warning: Log Entries after \"{0}\" will only be parsed", includeLogEntriesAfterThisTimeFrame);
@@ -121,20 +147,30 @@ void Main()
 
 	if (diagnosticNoSubFolders)
 	{
+		#region Parse -- All Files in one Folder
+		
 		var diagChildren =  diagPath.Children();
 		
 		//Need to process nodetool ring files first
-		var nodetoolRingFiles = diagChildren.Where(c => c is IFilePath && c.Name.Contains(nodetoolRingFile));
-		
-		foreach (IFilePath element in nodetoolRingFiles)
+		var nodetoolRingChildFile = diagChildren.Where(c => c is IFilePath && c.Name.Contains(nodetoolRingFile)).FirstOrDefault();
+
+		if (parseNonLogs && nodetoolRingChildFile != null)
 		{
-			Console.WriteLine("Processing File \"{0}\"", element.Path);
-			ReadRingFileParseIntoDataTables((IFilePath)element, dtRingInfo, dtTokenRange);
-		};
-		
+			Console.WriteLine("Processing File \"{0}\"", nodetoolRingChildFile.Path);
+			ReadRingFileParseIntoDataTables((IFilePath)nodetoolRingChildFile, dtRingInfo, dtTokenRange);
+		}
+
+		nodetoolRingChildFile = diagChildren.Where(c => c is IFilePath && c.Name.Contains(dseToolDir + "_" + dsetoolRingFile)).FirstOrDefault();
+
+		if (parseNonLogs && nodetoolRingChildFile != null)
+		{
+			Console.WriteLine("Processing File \"{0}\"", nodetoolRingChildFile.Path);
+			ReadDSEToolRingFileParseIntoDataTable((IFilePath)nodetoolRingChildFile, dtRingInfo);
+		}
+
 		IFilePath cqlFilePath;
 
-		if (diagPath.Clone().MakeFile(cqlDDLDirFileExt, out cqlFilePath))
+		if (parseNonLogs && diagPath.Clone().MakeFile(cqlDDLDirFileExt, out cqlFilePath))
 		{
 			foreach (IFilePath element in cqlFilePath.GetWildCardMatches())
 			{
@@ -161,26 +197,26 @@ void Main()
 				
 				if (DetermineIPDCFromFileName(((IFilePath)diagFile).FileName, dtRingInfo, out ipAddress, out dcName))
 				{
-					if (diagFile.Name.Contains(nodetoolCFStatsFile))
+					if (parseNonLogs && diagFile.Name.Contains(nodetoolCFStatsFile))
 					{
 						Console.WriteLine("Processing File \"{0}\"", diagFile.Path);
 						var dtCFStats = new System.Data.DataTable(excelWorkBookCFStats + "-" + ipAddress);
 						dtCFStatsStack.Push(dtCFStats);
 						ReadCFStatsFileParseIntoDataTable((IFilePath) diagFile, ipAddress, dcName, dtCFStats, ignoreKeySpaces, cfstatsCreateMBColumns);
 					}
-					else if (diagFile.Name.Contains(nodetoolTPStatsFile))
+					else if (parseNonLogs && diagFile.Name.Contains(nodetoolTPStatsFile))
 					{
 						Console.WriteLine("Processing File \"{0}\"", diagFile.Path);
 						var dtTPStats = new System.Data.DataTable(excelWorkBookTPStats + "-" + ipAddress);
 						dtTPStatsStack.Push(dtTPStats);
 						ReadTPStatsFileParseIntoDataTable((IFilePath)diagFile, ipAddress, dcName, dtTPStats);
 					}
-					else if (diagFile.Name.Contains(nodetoolInfoFile))
+					else if (parseNonLogs && diagFile.Name.Contains(nodetoolInfoFile))
 					{
 						Console.WriteLine("Processing File \"{0}\"", diagFile.Path);
 						ReadInfoFileParseIntoDataTable((IFilePath)diagFile, ipAddress, dcName, dtRingInfo);
 					}
-					else if (diagFile.Name.Contains(nodetoolCompactionHistFile))
+					else if (parseNonLogs && diagFile.Name.Contains(nodetoolCompactionHistFile))
 					{
 						Console.WriteLine("Processing File \"{0}\"", diagFile.Path);
 						var dtCompHist = new System.Data.DataTable(excelWorkBookCompactionHist + "-" + ipAddress);
@@ -192,14 +228,36 @@ void Main()
 						Console.WriteLine("Processing File \"{0}\"", diagFile.Path);
 						var dtLog = new System.Data.DataTable(excelWorkBookLogCassandra + "-" + ipAddress);
 						dtLogsStack.Push(dtLog);
-						ReadCassandraLogParseIntoDataTable((IFilePath)diagFile, ipAddress, dcName, includeLogEntriesAfterThisTimeFrame, dtLog);
+						ReadCassandraLogParseIntoDataTable((IFilePath)diagFile, ipAddress, dcName, includeLogEntriesAfterThisTimeFrame, LogMaxRowsPerNode, dtLog);
+					}
+					else if (parseNonLogs && diagFile.Name.Contains(confCassandraYamlFileName))
+					{
+						Console.WriteLine("Processing File \"{0}\"", diagFile.Path);
+						var yamlList = new List<YamlInfo>();
+						listCYamlStack.Push(yamlList);
+						ReadYamlFileParseIntoList((IFilePath)diagFile, ipAddress, dcName, confCassandraType, yamlList);
+					}
+					else if (parseNonLogs && diagFile.Name.Contains(confDSEFileName))
+					{
+						Console.WriteLine("Processing File \"{0}\"", diagFile.Path);
+						var yamlList = new List<YamlInfo>();
+						listCYamlStack.Push(yamlList);
+						ReadYamlFileParseIntoList((IFilePath)diagFile, 
+													ipAddress,
+													dcName,
+													((IFilePath)diagFile).FileExtension == ".yaml" ? confDSEYamlType : confDSEType,
+													yamlList);
 					}
 				}
 			}
 		});
+		
+		#endregion
 	}
 	else
 	{
+		#region Parse -- Files located in separate folders
+		
 		var diagNodePath = diagPath.Clone().AddChild(diagNodeDir) as Common.IDirectoryPath;
 		List<Common.IDirectoryPath> nodeDirs = null;
 
@@ -212,25 +270,32 @@ void Main()
 			nodeDirs = diagPath.Children().Cast<Common.IDirectoryPath>().ToList();
 		}
 
-		IFilePath ringFilePath = null;
+		IFilePath filePath = null;
 
-		if (nodeDirs.First().Clone().AddChild(nodetoolDir).MakeFile(nodetoolRingFile, out ringFilePath))
+		if (parseNonLogs && nodeDirs.First().Clone().AddChild(nodetoolDir).MakeFile(nodetoolRingFile, out filePath))
 		{
-			if (ringFilePath.Exist())
+			if (filePath.Exist())
 			{
-				Console.WriteLine("Processing File \"{0}\"", ringFilePath.Path);
-				ReadRingFileParseIntoDataTables(ringFilePath, dtRingInfo, dtTokenRange);
+				Console.WriteLine("Processing File \"{0}\"", filePath.Path);
+				ReadRingFileParseIntoDataTables(filePath, dtRingInfo, dtTokenRange);
 			}
 		}
 
-		IFilePath cqlFilePath = null;
-
-		if (nodeDirs.First().Clone().MakeFile(cqlDDLDirFile, out cqlFilePath))
+		if (parseNonLogs && nodeDirs.First().Clone().AddChild(dseToolDir).MakeFile(dsetoolRingFile, out filePath))
 		{
-			if (cqlFilePath.Exist())
+			if (filePath.Exist())
 			{
-				Console.WriteLine("Processing File \"{0}\"", cqlFilePath.Path);
-				ReadCQLDDLParseIntoDataTable(cqlFilePath,
+				Console.WriteLine("Processing File \"{0}\"", filePath.Path);
+				ReadDSEToolRingFileParseIntoDataTable(filePath, dtRingInfo);
+			}
+		}
+
+		if (parseNonLogs && nodeDirs.First().Clone().MakeFile(cqlDDLDirFile, out filePath))
+		{
+			if (filePath.Exist())
+			{
+				Console.WriteLine("Processing File \"{0}\"", filePath.Path);
+				ReadCQLDDLParseIntoDataTable(filePath,
 												null,
 												null,
 												dtKeySpace,
@@ -249,7 +314,7 @@ void Main()
 			
 			DetermineIPDCFromFileName(element.Name, dtRingInfo, out ipAddress, out dcName);
 
-			if (element.Clone().AddChild(nodetoolDir).MakeFile(nodetoolCFStatsFile, out diagFilePath))
+			if (parseNonLogs && element.Clone().AddChild(nodetoolDir).MakeFile(nodetoolCFStatsFile, out diagFilePath))
 			{
 				if (diagFilePath.Exist())
 				{
@@ -260,7 +325,7 @@ void Main()
 				}
 			}
 
-			if (element.Clone().AddChild(nodetoolDir).MakeFile(nodetoolTPStatsFile, out diagFilePath))
+			if (parseNonLogs && element.Clone().AddChild(nodetoolDir).MakeFile(nodetoolTPStatsFile, out diagFilePath))
 			{
 				if (diagFilePath.Exist())
 				{
@@ -271,7 +336,7 @@ void Main()
 				}
 			}
 
-			if (element.Clone().AddChild(nodetoolDir).MakeFile(nodetoolInfoFile, out diagFilePath))
+			if (parseNonLogs && element.Clone().AddChild(nodetoolDir).MakeFile(nodetoolInfoFile, out diagFilePath))
 			{
 				if (diagFilePath.Exist())
 				{
@@ -280,7 +345,7 @@ void Main()
 				}
 			}
 
-			if (element.Clone().AddChild(nodetoolDir).MakeFile(nodetoolCompactionHistFile, out diagFilePath))
+			if (parseNonLogs && element.Clone().AddChild(nodetoolDir).MakeFile(nodetoolCompactionHistFile, out diagFilePath))
 			{
 				if (diagFilePath.Exist())
 				{
@@ -298,12 +363,54 @@ void Main()
 					Console.WriteLine("Processing File \"{0}\"", diagFilePath.Path);
 					var dtLog = new System.Data.DataTable(excelWorkBookLogCassandra + "-" + ipAddress);
 					dtLogsStack.Push(dtLog);
-					ReadCassandraLogParseIntoDataTable(diagFilePath, ipAddress, dcName, includeLogEntriesAfterThisTimeFrame, dtLog);
+					ReadCassandraLogParseIntoDataTable(diagFilePath, ipAddress, dcName, includeLogEntriesAfterThisTimeFrame, LogMaxRowsPerNode, dtLog);
 				}
 			}
+
+			if (parseNonLogs && element.Clone().AddChild(confCassandraDir).MakeFile(confCassandraFile, out diagFilePath))
+			{
+				if (diagFilePath.Exist())
+				{
+					Console.WriteLine("Processing File \"{0}\"", diagFilePath.Path);
+					var yamlList = new List<YamlInfo>();
+					listCYamlStack.Push(yamlList);
+					ReadYamlFileParseIntoList(diagFilePath, ipAddress, dcName, confCassandraType, yamlList);
+				}
+			}
+
+			if (parseNonLogs && element.Clone().AddChild(confDSEDir).MakeFile(confDSEYamlFile, out diagFilePath))
+			{
+				if (diagFilePath.Exist())
+				{
+					Console.WriteLine("Processing File \"{0}\"", diagFilePath.Path);
+					var yamlList = new List<YamlInfo>();
+					listCYamlStack.Push(yamlList);
+					ReadYamlFileParseIntoList(diagFilePath, ipAddress, dcName, confDSEYamlType, yamlList);
+				}
+			}
+
+			if (parseNonLogs && element.Clone().AddChild(confDSEDir).MakeFile(confDSEFile, out diagFilePath))
+			{
+				if (diagFilePath.Exist())
+				{
+					Console.WriteLine("Processing File \"{0}\"", diagFilePath.Path);
+					var yamlList = new List<YamlInfo>();
+					listCYamlStack.Push(yamlList);
+					ReadYamlFileParseIntoList(diagFilePath, ipAddress, dcName, confDSEType, yamlList);
+				}
+			}
+
 		}//);
+
+		#endregion
 	}
 
+	var runYamlListIntoDT = Task.Run(() => ParseYamlListIntoDataTable(listCYamlStack, dtYaml));
+
+	#endregion
+	
+	#region Excel Creation/Formatting
+	
 	//Cassandra Log (usually runs longer)
 	var runLogParsing = Task.Run(() => DTLoadIntoDifferentExcelWorkBook(excelFilePath,
 																		   excelWorkBookLogCassandra,
@@ -336,11 +443,12 @@ void Main()
 											//workSheet.Cells["1:1"].Style.Fill.BackgroundColor.SetColor(System.Drawing.Color.LightGray);
 											workSheet.View.FreezePanes(2, 1);
 											workSheet.Cells["A1:M1"].AutoFilter = true;
-											workSheet.Cells["E:E"].Style.Numberformat.Format = "#,###,###,##0";
-											workSheet.Cells["I:I"].Style.Numberformat.Format = "#,###,###,##0.00";											
-											workSheet.Cells["F:F"].Style.Numberformat.Format = "#,###,###,##0";
-											workSheet.Cells["J:J"].Style.Numberformat.Format = "#,###,###,##0";
-											workSheet.Cells["G:G"].Style.Numberformat.Format = "h:mm:ss;@";;
+											workSheet.Cells["F:F"].Style.Numberformat.Format = "#,###,###,##0.00";											
+											workSheet.Cells["J:J"].Style.Numberformat.Format = "#,###,###,##0.00";	
+											workSheet.Cells["G:G"].Style.Numberformat.Format = "##0.00%";	
+											workSheet.Cells["K:K"].Style.Numberformat.Format = "#,###,###,##0";
+											workSheet.Cells["L:L"].Style.Numberformat.Format = "#,###,###,##0";
+											workSheet.Cells["H:H"].Style.Numberformat.Format = "h:mm:ss;@";;
 											
 											workSheet.Cells.AutoFitColumns();
 										});
@@ -376,7 +484,8 @@ void Main()
 										workSheet.Cells["1:1"].Style.HorizontalAlignment = OfficeOpenXml.Style.ExcelHorizontalAlignment.Center;
 										//workBook.Cells["1:1"].Style.Fill.BackgroundColor.SetColor(System.Drawing.Color.LightGray);
 										workSheet.Cells["H:H"].Style.Numberformat.Format = "#,###,###,##0";
-										workSheet.Cells["H1"].AddComment("Change Numeric Format to Display Decimals", "Rich Andersen");
+										
+										//workSheet.Cells["H1"].AddComment("Change Numeric Format to Display Decimals", "Rich Andersen");
 										workSheet.Cells["H1"].Value = workSheet.Cells["H1"].Text + "(Formatted)"; 
 										workSheet.View.FreezePanes(2, 1);
 										workSheet.Cells["A1:H1"].AutoFilter = true;
@@ -454,11 +563,34 @@ void Main()
 										});
 		}
 
+		//Yaml
+		runYamlListIntoDT.Wait();
+
+		if (dtYaml.Rows.Count > 0)
+		{
+			DTLoadIntoExcelWorkBook(excelPkg,
+									excelWorkBookYaml,
+									dtYaml,
+									workSheet =>
+									{
+										workSheet.Cells["1:1"].Style.Fill.PatternType = OfficeOpenXml.Style.ExcelFillStyle.LightGray;
+										workSheet.Cells["1:1"].Style.HorizontalAlignment = OfficeOpenXml.Style.ExcelHorizontalAlignment.Center;
+										//workBook.Cells["1:1"].Style.Fill.BackgroundColor.SetColor(System.Drawing.Color.LightGray);
+										workSheet.View.FreezePanes(2, 1);
+										workSheet.Cells["A1:E1"].AutoFilter = true;
+										workSheet.Cells.AutoFitColumns();
+									});
+		}
+
 		excelPkg.Save();
 	} //Save non-log data
 	
 	runLogParsing.Wait();
+	
+	#endregion
 }
+
+#region Excel Related Functions
 
 bool DetermineIPDCFromFileName(string pathItem, DataTable dtRingInfo, out string ipAddress, out string dcName)
 {
@@ -692,6 +824,10 @@ int DTLoadIntoDifferentExcelWorkBook(string excelFilePath,
 	return wsCount;
 }
 
+#endregion
+
+#region Reading/Parsing Files
+
 void ReadRingFileParseIntoDataTables(IFilePath ringFilePath,
 										System.Data.DataTable dtRingInfo,
 										System.Data.DataTable dtTokenRange)
@@ -704,11 +840,14 @@ void ReadRingFileParseIntoDataTables(IFilePath ringFilePath,
 		dtRingInfo.Columns.Add("DataCenter", typeof(string));
 		dtRingInfo.Columns.Add("Rack", typeof(string));
 		dtRingInfo.Columns.Add("Status", typeof(string));
-		dtRingInfo.Columns.Add("Storage Utilization (MB)", typeof(decimal)).AllowDBNull = true;
-		dtRingInfo.Columns.Add("Number of Restarts", typeof(int)).AllowDBNull = true;
+		dtRingInfo.Columns.Add("Instance Type", typeof(string)).AllowDBNull = true;
+		dtRingInfo.Columns.Add("Storage Used (MB)", typeof(decimal)).AllowDBNull = true;
+		dtRingInfo.Columns.Add("Storage Utilization", typeof(decimal)).AllowDBNull = true;
+		//dtRingInfo.Columns.Add("Number of Restarts", typeof(int)).AllowDBNull = true;
 		dtRingInfo.Columns.Add("Uptime", typeof(TimeSpan)).AllowDBNull = true;
 		dtRingInfo.Columns.Add("Heap Memory (MB)", typeof(string)).AllowDBNull = true;
 		dtRingInfo.Columns.Add("Off Heap Memory (MB)", typeof(decimal)).AllowDBNull = true;
+		dtRingInfo.Columns.Add("Nbr VNodes", typeof(int)).AllowDBNull = true;
 		dtRingInfo.Columns.Add("Nbr of Exceptions", typeof(int)).AllowDBNull = true;
 		dtRingInfo.Columns.Add("Gossip Enableed", typeof(bool)).AllowDBNull = true;
 		dtRingInfo.Columns.Add("Thrift Enabled", typeof(bool)).AllowDBNull = true;
@@ -1023,12 +1162,12 @@ void ReadCassandraLogParseIntoDataTable(IFilePath clogFilePath,
 										string ipAddress,
 										string dcName,
 										DateTime onlyEntriesAfterThisTimeFrame,
+										int maxRowWrite,
 										System.Data.DataTable dtCLog)
 {
 	if (dtCLog.Columns.Count == 0)
 	{
-		dtCLog.Columns.Add("Data Center", typeof(string));
-		dtCLog.Columns[0].AllowDBNull = true;
+		dtCLog.Columns.Add("Data Center", typeof(string)).AllowDBNull = true;
 		dtCLog.Columns.Add("Node IPAdress", typeof(string));
 
 
@@ -1036,12 +1175,9 @@ void ReadCassandraLogParseIntoDataTable(IFilePath clogFilePath,
 		dtCLog.Columns.Add("Indicator", typeof(string));
 		dtCLog.Columns.Add("Task", typeof(string));
 		dtCLog.Columns.Add("Item", typeof(string));
-		dtCLog.Columns.Add("Exception", typeof(string));
-		dtCLog.Columns["Exception"].AllowDBNull = true;
-		dtCLog.Columns.Add("Exception Description", typeof(string));
-		dtCLog.Columns["Exception Description"].AllowDBNull = true;
-		dtCLog.Columns.Add("Assocated IP", typeof(string));
-		dtCLog.Columns["Assocated IP"].AllowDBNull = true;
+		dtCLog.Columns.Add("Exception", typeof(string)).AllowDBNull = true;
+		dtCLog.Columns.Add("Exception Description", typeof(string)).AllowDBNull = true;
+		dtCLog.Columns.Add("Assocated IP", typeof(string)).AllowDBNull = true;
 		dtCLog.Columns.Add("Description", typeof(string));
 	}
 
@@ -1053,6 +1189,12 @@ void ReadCassandraLogParseIntoDataTable(IFilePath clogFilePath,
 	DataRow lastRow = null;
 	DateTime lineDateTime;
 	string lineIPAddress;
+	int rowsAdded = 0;
+
+	if (maxRowWrite <= 0)
+	{
+		maxRowWrite = int.MaxValue;
+	}
 	
 	for(int nLine = 0; nLine < fileLines.Length; ++nLine)
 	{
@@ -1247,9 +1389,16 @@ void ReadCassandraLogParseIntoDataTable(IFilePath clogFilePath,
 			var startRange = parsedValues[5][0] == '(' ? 5 : 6;
 			dataRow["Description"] = string.Join(" ", parsedValues.GetRange(startRange, parsedValues.Count - startRange));
 		}
-		
+
 		dtCLog.Rows.Add(dataRow);
+	
+		if (rowsAdded++ > maxRowWrite)
+		{
+			break;
+		}
+		
 		lastRow = dataRow;
+		
 	}
 }
 
@@ -1278,7 +1427,7 @@ void ReadCQLDDLParseIntoDataTable(IFilePath cqlDDLFilePath,
 	{
 		dtTable.Columns.Add("Keyspace Name", typeof(string));
 		dtTable.Columns.Add("Name", typeof(string));
-		dtTable.Columns.Add("Primary Key", typeof(string));
+		dtTable.Columns.Add("Pritition Key", typeof(string));
 		dtTable.Columns.Add("Cluster Key", typeof(string));
 		dtTable.Columns["Cluster Key"].AllowDBNull = true;
 		dtTable.Columns.Add("Compaction Strategy", typeof(string));
@@ -1467,11 +1616,11 @@ void ReadCQLDDLParseIntoDataTable(IFilePath cqlDDLFilePath,
 							{
 								pkdtList.Add(tblColumns.Find(c => c.StartsWith(element)));
 							}
-							dataRow["Primary Key"] = string.Join(", ", pkdtList);
+							dataRow["Pritition Key"] = string.Join(", ", pkdtList);
 						}
 						else
 						{
-							dataRow["Primary Key"] = tblColumns.Find(c => c.StartsWith(pkLocation));
+							dataRow["Pritition Key"] = tblColumns.Find(c => c.StartsWith(pkLocation));
 						}
 
 						var cdtList = new List<string>();
@@ -1487,7 +1636,7 @@ void ReadCQLDDLParseIntoDataTable(IFilePath cqlDDLFilePath,
 						//look for keyworad Primary Key
 						var pkVar = tblColumns.Find(c => c.EndsWith("primary key", StringComparison.OrdinalIgnoreCase));
 						 
-						dataRow["Primary Key"] = pkVar.Substring(0, pkVar.Length - 11).TrimEnd();	
+						dataRow["Pritition Key"] = pkVar.Substring(0, pkVar.Length - 11).TrimEnd();	
 						dataRow["Cluster Key"] = null;
 					}
 
@@ -1672,10 +1821,10 @@ void ReadInfoFileParseIntoDataTable(IFilePath infoFilePath,
 				dataRow["Native Transport Enable"] = bool.Parse(lineValue);
 				break;
 			case "load":
-				dataRow["Storage Utilization (MB)"] = ConvertInToMB(lineValue);
+				dataRow["Storage Used (MB)"] = ConvertInToMB(lineValue);
 				break;
 			case "generation no":
-				dataRow["Number of Restarts"] = int.Parse(lineValue);
+				//dataRow["Number of Restarts"] = int.Parse(lineValue);
 				break;
 			case "uptime (seconds)":
 				dataRow["Uptime"] = new TimeSpan(0,0,int.Parse(lineValue));
@@ -1712,6 +1861,399 @@ void ReadInfoFileParseIntoDataTable(IFilePath infoFilePath,
 	dataRow.EndEdit();
 	dataRow.AcceptChanges();
 }
+
+void ReadDSEToolRingFileParseIntoDataTable(IFilePath dseRingFilePath,
+											DataTable dtRingInfo)
+{
+	var fileLines = dseRingFilePath.ReadAllLines();
+	string line;
+	List<string> parsedLine;
+	string ipAddress;
+	DataRow dataRow;
+
+//Note: Ownership information does not include topology, please specify a keyspace.
+//Address 			DC			Rack 	Workload	Status 	State	Load 		Owns	VNodes
+//10.27.34.17 		DC1 		RAC1	Cassandra 	Up		Normal	48.36 GB	6.31 % 	256
+//Warning: Node 10.27.34.54 is serving 1.20 times the token space of node 10.27.34.52, which means it will be using 1.20 times more disk space and network bandwidth.If this is unintentional, check out http://wiki.apache.org/cassandra/Operations#Ring_management
+//Warning: Node 10.27.34.12 is serving 1.11 times the token space of node 10.27.34.21, which means it will be using 1.11 times more disk space and network bandwidth.If this is unintentional, check out http://wiki.apache.org/cassandra/Operations#Ring_management
+
+	foreach (var element in fileLines)
+	{
+		line = element.Trim();
+
+		if (string.IsNullOrEmpty(line)
+			|| line.StartsWith("warning: ", StringComparison.OrdinalIgnoreCase)
+			|| line.StartsWith("note: ", StringComparison.OrdinalIgnoreCase))
+		{
+			continue;
+		}
+
+		parsedLine = Common.StringFunctions.Split(line,
+													' ',
+													Common.StringFunctions.IgnoreWithinDelimiterFlag.Text | Common.StringFunctions.IgnoreWithinDelimiterFlag.Brace,
+													Common.StringFunctions.SplitBehaviorOptions.Default | Common.StringFunctions.SplitBehaviorOptions.RemoveEmptyEntries);
+
+		if (IPAddressStr(parsedLine[0], out ipAddress))
+		{
+			dataRow = dtRingInfo.Rows.Find(ipAddress);
+
+
+			if (dataRow == null)
+			{
+				Console.WriteLine("Warning: IP Address {0} was not found in the \"nodetool ring\" file but was found within the \"dsetool ring\" file. Ring information added.", ipAddress);
+				
+				dataRow = dtRingInfo.NewRow();
+
+				dataRow["Node IPAdress"] = ipAddress;
+				dataRow["DataCenter"] = parsedLine[1];
+				dataRow["Rack"] = parsedLine[2];
+				dataRow["Status"] = parsedLine[4];
+				dataRow["Instance Type"] = parsedLine[3];
+				dataRow["Storage Used (MB)"] = ConvertInToMB(parsedLine[6], parsedLine[7]);
+				dataRow["Storage Utilization"] = decimal.Parse(parsedLine[8].LastIndexOf('%') >= 0 
+																? parsedLine[8].Substring(0, parsedLine[8].Length - 1)
+																:  parsedLine[8]) / 100m;
+				dataRow["Nbr VNodes"] = int.Parse(parsedLine[9][0] == '%' ? parsedLine[10] : parsedLine[9]);
+				
+				dtRingInfo.Rows.Add(dataRow);
+			}
+			else
+			{
+				dataRow.BeginEdit();
+
+				dataRow["Instance Type"] = parsedLine[3];
+				dataRow["Storage Utilization"] = decimal.Parse(parsedLine[8].LastIndexOf('%') >= 0
+																? parsedLine[8].Substring(0, parsedLine[8].Length - 1)
+																: parsedLine[8]) / 100m;
+				dataRow["Storage Used (MB)"] = ConvertInToMB(parsedLine[6], parsedLine[7]);
+				dataRow["Nbr VNodes"] = int.Parse(parsedLine[9][0] == '%' ? parsedLine[10] : parsedLine[9]);
+				
+				dataRow.EndEdit();
+				dataRow.AcceptChanges();
+			}
+		}
+	}
+
+	
+}
+
+class YamlInfo
+{
+	public string YamlType;
+	public string IPAddress;
+	public string DCName;
+	public string Cmd;
+	public string CmdParams;
+	public IEnumerable<Tuple<string,string>> KeyValueParams;
+	
+	public string MakeKeyValue()
+	{
+		return this.DCName
+					+ ": "
+					+ this.Cmd
+					+ ": "
+					+ (this.KeyValueParams == null
+							? this.CmdParams
+							: string.Join(" ", this.KeyValueParams.Select(kvp => kvp.Item1 + ": " + kvp.Item2)));
+    }
+
+	public bool ComparerProperyOnly(YamlInfo compareItem)
+	{
+		return this.DCName == compareItem.DCName
+				&& this.Cmd == compareItem.Cmd
+				&& (this.KeyValueParams == null
+					|| (this.KeyValueParams.Count() == compareItem.KeyValueParams.Count()
+							&& this.KeyValueParams.All(item => compareItem.KeyValueParams.Where(kvp => kvp.Item1 == item.Item1).Count() > 0)));
+	}
+	
+	public string ProperyName()
+	{
+		return this.Cmd + (this.KeyValueParams == null
+								? string.Empty
+								: "." + string.Join(".", this.KeyValueParams.Select(kvp => kvp.Item1)));
+	}
+
+	public string ProperyName(int inxProperty)
+	{
+		return this.Cmd + (this.KeyValueParams == null || inxProperty == 0
+								? string.Empty
+								: "." + this.KeyValueParams.ElementAt(inxProperty - 1).Item1);
+	}
+
+	public object ProperyValue(int inxProperty)
+	{
+		string strValue = this.KeyValueParams == null || inxProperty == 0
+								? this.CmdParams
+								: this.KeyValueParams.ElementAt(inxProperty - 1).Item2;
+		object numValue;
+
+		if (StringFunctions.ParseIntoNumeric(strValue, out numValue))
+		{
+			return numValue;
+		}
+		else if(strValue == "false")
+		{
+			return false;
+		}
+		else if (strValue == "true")
+		{
+			return true;
+		}
+
+		return strValue;
+	}
+
+	public bool AddValueToDR(DataTable dtYamal)
+	{
+		if (this.KeyValueParams == null)
+		{
+			var dataRow = dtYamal.NewRow();
+
+			if (this.AddValueToDR(dataRow, 0))
+			{
+				dtYamal.Rows.Add(dataRow);
+				return true;
+			}
+			
+			return false;
+		}
+		
+		for (int i = 1; i <= this.KeyValueParams.Count(); i++)
+		{
+			var dataRow = dtYamal.NewRow();
+
+			if (this.AddValueToDR(dataRow, i))
+			{
+				dtYamal.Rows.Add(dataRow);
+			}
+		}
+		
+		return true;
+	}
+
+	public bool AddValueToDR(DataRow drYama, int inxProperty)
+	{
+		var maxIndex = this.KeyValueParams == null ? 0 : this.KeyValueParams.Count();
+
+		if (inxProperty > maxIndex)
+		{
+			return false;
+		}
+		
+		drYama["Yaml Type"] = this.YamlType;
+		drYama["Data Center"] = this.DCName;
+		drYama["Node IPAdress"] = this.IPAddress;
+		drYama["Property"] = this.ProperyName(inxProperty);
+		drYama["Value"] = this.ProperyValue(inxProperty);
+		
+		return true;
+	}
+}
+
+void ReadYamlFileParseIntoList(IFilePath yamlFilePath,
+										string ipAddress,
+										string dcName,
+										string yamlType,
+										List<YamlInfo> yamlList)
+{
+	var fileLines = yamlFilePath.ReadAllLines();
+	string line;
+	int posCmdDel;
+	string strCmd;
+	string parsedValue;
+	bool optionsCmdParamsFnd = false;
+	bool optionsBrace = false;
+	List<string> separateParams;
+
+//seed_provider:
+//# Addresses of hosts that are deemed contact points.
+//# Cassandra nodes use this list of hosts to find each other and learn
+//# the topology of the ring.  You must change this if you are running
+//# multiple nodes!
+//	-class_name: org.apache.cassandra.locator.SimpleSeedProvider
+//	 parameters:
+//          # seeds is actually a comma-delimited list of addresses.
+//          # Ex: "<ip1>,<ip2>,<ip3>"
+//          -seeds: "10.27.34.11,10.27.34.12"
+//
+//concurrent_reads: 32
+//
+//server_encryption_options:
+//	internode_encryption: none
+//	keystore: resources/dse/conf /.keystore
+//	keystore_password:  cassandra
+//	truststore: resources/dse/conf/.truststore
+//    truststore_password: cassandra
+//    # More advanced defaults below:
+//    # protocol: TLS
+//    # algorithm: SunX509
+//    # store_type: JKS
+//    # cipher_suites: [TLS_RSA_WITH_AES_128_CBC_SHA,TLS_RSA_WITH_AES_256_CBC_SHA,TLS_DHE_RSA_WITH_AES_128_CBC_SHA,TLS_DHE_RSA_WITH_AES_256_CBC_SHA,TLS_ECDHE_RSA_WITH_AES_128_CBC_SHA,TLS_ECDHE_RSA_WITH_AES_256_CBC_SHA]
+//    # require_client_auth: false
+//
+// node_health_options: {enabled: false, refresh_rate_ms: 60000}
+//
+// cassandra_audit_writer_options: {mode: sync, batch_size: 50, flush_time: 500, num_writers: 10,
+//		queue_size: 10000, write_consistency: QUORUM}
+
+	for (int nIndex = 0; nIndex < fileLines.Length; ++nIndex)
+	{
+		line = fileLines[nIndex].Trim();
+
+		if (string.IsNullOrEmpty(line)
+			|| line[0] == '#'
+			|| line.StartsWith("if ")
+			|| line == "fi")
+		{
+			continue;
+		}
+
+		if (line[0] == '-')
+		{
+			parsedValue = RemoveCommentInLine(line.Substring(1).TrimStart().RemoveConsecutiveChar());
+			yamlList.Last().CmdParams += ' ' + parsedValue;
+			continue;
+		}
+		else if (optionsBrace)
+		{
+			parsedValue = RemoveCommentInLine(line.RemoveConsecutiveChar());
+			yamlList.Last().CmdParams += ' ' + parsedValue;
+			optionsBrace = !(parsedValue.Length > 0 && parsedValue[parsedValue.Length - 1] == '}');
+			continue;
+		}
+		else if (line.StartsWith("parameters:")
+					|| optionsCmdParamsFnd && fileLines[nIndex][0] == ' ')
+		{
+			parsedValue = RemoveCommentInLine(line.RemoveConsecutiveChar());
+			yamlList.Last().CmdParams += ' ' + parsedValue;
+			continue;
+		}
+		
+		if (optionsCmdParamsFnd)
+		{
+			optionsCmdParamsFnd = false;
+		}
+
+		posCmdDel = line.IndexOf(':');
+
+		if (posCmdDel < 0)
+		{
+			posCmdDel = line.IndexOf('=');
+
+			if (posCmdDel < 0)
+			{
+				parsedValue = RemoveCommentInLine(line.RemoveConsecutiveChar());
+				yamlList.Last().CmdParams += ' ' + parsedValue;
+				continue;
+			}
+		}
+
+		strCmd = line.Substring(0, posCmdDel);
+
+		if (strCmd.EndsWith("_options"))
+		{
+			optionsCmdParamsFnd = true;
+		}
+
+		parsedValue = RemoveCommentInLine(line.Substring(posCmdDel + 1).Trim().RemoveConsecutiveChar());
+
+		if (parsedValue.Length > 2 && parsedValue[0] == '{')
+		{
+			if (parsedValue[parsedValue.Length - 1] != '}')
+			{
+				optionsBrace = true;
+			}
+		}
+
+		yamlList.Add(new YamlInfo()
+							{
+								YamlType = yamlType,
+								Cmd = strCmd,
+								DCName = dcName,
+								IPAddress = ipAddress,
+								CmdParams = parsedValue
+							});
+	}
+
+	foreach (var element in yamlList)
+	{
+		separateParams = Common.StringFunctions.Split(element.CmdParams,
+														new char[] { ',', ' ', ':', '=' },
+														Common.StringFunctions.IgnoreWithinDelimiterFlag.Text,
+														Common.StringFunctions.SplitBehaviorOptions.Default | Common.StringFunctions.SplitBehaviorOptions.RemoveEmptyEntries);
+
+		if (separateParams.Count <= 1)
+		{
+			element.CmdParams = DetermineProperFormat(separateParams.FirstOrDefault());
+		}
+		else
+		{
+			var keyValues = new List<Tuple<string, string>>();
+			string subCmd = string.Empty;
+			
+			for (int nIndex = 0; nIndex < separateParams.Count; ++nIndex)
+			{
+				if (separateParams[nIndex] != "parameters")
+				{
+					if (separateParams[nIndex + 1].Length > 0 && separateParams[nIndex + 1][0] == '{')
+                    {
+						subCmd = separateParams[nIndex] + '.';
+						++nIndex;
+						separateParams[nIndex] = separateParams[nIndex].Substring(1);
+					}
+					
+					keyValues.Add(new Tuple<string, string>(DetermineProperFormat(subCmd + separateParams[nIndex]), DetermineProperFormat(separateParams[++nIndex])));
+				}
+			}
+			element.KeyValueParams = keyValues.OrderBy(v => v.Item1);
+		}
+		
+	}
+}
+
+void ParseYamlListIntoDataTable(Common.Patterns.Collections.LockFree.Stack<List<YamlInfo>> yamlStackList,
+									DataTable dtCYaml)
+{
+	List<YamlInfo> yamlList;
+	List<YamlInfo> masterYamlList = new List<YamlInfo>();
+
+	while (yamlStackList.Pop(out yamlList))
+	{
+		masterYamlList.AddRange(yamlList);
+	}
+
+	if (masterYamlList.Count == 0)
+	{
+		return;
+	}
+	
+	var removeDups = masterYamlList.DuplicatesRemoved( item => item.MakeKeyValue());
+
+	if (dtCYaml.Columns.Count == 0)
+	{
+		dtCYaml.Columns.Add("Data Center", typeof(string)).AllowDBNull = true;
+		dtCYaml.Columns.Add("Node IPAdress", typeof(string));
+		dtCYaml.Columns.Add("Yaml Type", typeof(string));
+		dtCYaml.Columns.Add("Property", typeof(string));
+		dtCYaml.Columns.Add("Value", typeof(object));
+	}
+
+	var yamlItems = removeDups.ToArray();
+	
+	foreach (var element in yamlItems)
+	{
+		if (yamlItems.Count(i => i.ComparerProperyOnly(element)) < 2)
+		{
+			element.IPAddress = "<Common>";
+		}
+		
+		element.AddValueToDR(dtCYaml);
+	}
+}
+
+#endregion
+
+#region Helper Functions
 
 bool LookForIPAddress(string value, string ignoreIPAddress, out string ipAddress)
 {
@@ -1909,13 +2451,81 @@ DateTime FromUnixTime(string unixTime)
 string RemoveNamespace(string className)
 {
 	className = RemoveQuotes(className);
-	
-	var lastPeriod = className.LastIndexOf('.');
 
-	if (lastPeriod >= 0)
+	if (!className.Contains('/'))
 	{
-		return className.Substring(lastPeriod + 1);
+		var lastPeriod = className.LastIndexOf('.');
+
+		if (lastPeriod >= 0)
+		{
+			return className.Substring(lastPeriod + 1);
+		}
 	}
 	
 	return className;
 }
+
+string DetermineProperFormat(string strValue, bool ignoreBraces = false)
+{
+	string strValueA;
+	object item;
+
+	if (string.IsNullOrEmpty(strValue))
+	{
+		return strValue;
+	}
+	
+	strValue = strValue.Trim();
+
+	if (strValue == string.Empty)
+	{
+		return strValue;
+	}
+
+	if (strValue[0] == '"')
+	{
+		var splitItems = strValue.Substring(1,strValue.Length - 2).Split(',');
+		var fmtItems = splitItems.Select(i => DetermineProperFormat(i, true)).Sort();
+		return string.Join(", ", fmtItems);
+	}
+
+	if (!ignoreBraces)
+	{
+		if (strValue[0] == '{')
+		{
+			strValue = strValue.Substring(1);
+		}
+		if (strValue[strValue.Length - 1] == '}')
+		{
+			strValue = strValue.Substring(0, strValue.Length - 1);
+		}
+	}
+	
+	strValue = RemoveQuotes(strValue);
+
+	if (IPAddressStr(strValue, out strValueA))
+	{
+		return strValueA;
+	}
+
+	if (StringFunctions.ParseIntoNumeric(strValue, out item))
+	{
+		return item.ToString();
+	}
+	
+	return RemoveNamespace(strValue);
+}
+
+string RemoveCommentInLine(string line, char commentChar = '#')
+{
+	var commentPos = line.IndexOf(commentChar);
+
+	if (commentPos >= 0)
+	{
+		return line.Substring(0, commentPos).TrimEnd();
+	}
+	
+	return line;
+}
+
+#endregion
