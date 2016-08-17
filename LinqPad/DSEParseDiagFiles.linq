@@ -34,7 +34,7 @@
 const int MaxRowInExcelWorkSheet = 50000; //-1 disabled
 const int MaxRowInExcelWorkBook = 500000; //-1 disabled
 const int GCPausedFlagThresholdInMS = 5000; //Defines a threshold that will flag a log entry in both the log summary (only if GCInspector.java) and log worksheets
-static TimeSpan LogTimeSpanRange = new TimeSpan(5, 0, 0, 0); //Only import log entries for the past timespan (e.g., the last 5 days) based on LogCurrentDate.
+static TimeSpan LogTimeSpanRange = new TimeSpan(1, 0, 0, 0); //Only import log entries for the past timespan (e.g., the last 5 days) based on LogCurrentDate.
 static DateTime LogCurrentDate = DateTime.MinValue; //DateTime.Now.Date; //If DateTime.MinValue all log entries are parsed
 static int LogMaxRowsPerNode = -1; // -1 disabled
 static string[] LogSummaryIndicatorType = new string[] { "WARN", "ERROR" };
@@ -62,13 +62,13 @@ static Tuple<TimeSpan, TimeSpan>[] LogSummaryPeriodRanges = new Tuple<TimeSpan, 
 //	[Description], string -- log's description
 //	[Flagged], bool, AllowDBNull -- if true this log entry was flagged because it matched some criteria (e.g., GC Pauses -- GCInspector.java exceeds GCPausedFlagThresholdInMS)
 static string LogExcelWorkbookFilter = string.Empty; //"[Timestamp] >= #2016-08-01#"; //if null no filter is used, if string.Empty the max log timestamp with LogTimeSpanRange is used. 
-static bool LoadLogsIntoExcel = false;
+static bool LoadLogsIntoExcel = true;
 
 void Main()
 {
 	#region Configuration
 	//Location where this application will write or update the Excel file.
-	var excelFilePath = @"[DeskTop]\TestDiag.xlsx"; //<==== Should be updated
+	var excelFilePath = @"[DeskTop]\Gamesys.xlsx"; //<==== Should be updated
 	
 	//If diagnosticNoSubFolders is false:
 	//Directory where files are located to parse DSE diagnostics files produced by DataStax OpsCenter diagnostics or a special directory structure where DSE diagnostics information is placed.
@@ -89,8 +89,8 @@ void Main()
 	//If diagnosticNoSubFolders is ture:
 	//	All diagnostic files are located directly under diagnosticPath folder. Each file should have the IP Adress either in the beginning or end of the file name.
 	//		e.g., cfstats_10.192.40.7, system-10.192.40.7.log, 10.192.40.7_system.log, etc.
-	var diagnosticPath = @"[MyDocuments]\LINQPad Queries\DataStax\TestData\datastax"; //production_group_v_1-diagnostics-2016_07_04_15_43_48_UTC"; //@"C:\Users\richard\Desktop\datastax"; //<==== Should be Updated 
-	var diagnosticNoSubFolders = true; //<==== Should be Updated 
+	var diagnosticPath = @"[MyDocuments]\LINQPad Queries\DataStax\TestData\gamingactivity-diagnostics-2016_08_10_08_45_40_UTC"; //production_group_v_1-diagnostics-2016_07_04_15_43_48_UTC"; //@"C:\Users\richard\Desktop\datastax"; //<==== Should be Updated 
+	var diagnosticNoSubFolders = false; //<==== Should be Updated 
 	var parseLogs = true;
 	var parseNonLogs = true;
 	
@@ -234,7 +234,7 @@ void Main()
 				{
 					if (parseNonLogs && diagFile.Name.Contains(nodetoolCFStatsFile))
 					{
-						if (string.IsNullOrEmpty(dcName))
+						if (parseNonLogs && string.IsNullOrEmpty(dcName))
 						{
 							Console.WriteLine("*** Warning: A DataCenter Name was not found for path \"{0}\" in the assocated IP Address in the Ring File.", diagFile.Path);
 						}
@@ -301,7 +301,7 @@ void Main()
 
 							if (useMaxTimestamp)
 							{
-								var currentRange = maxLogTimestamp.Dump().Date.AddDays(1).Dump();
+								var currentRange = maxLogTimestamp.Date.AddDays(1);
 
 								for (int nIndex = 0; nIndex < summaryPeriods.Length; ++nIndex)
 								{
@@ -421,7 +421,7 @@ void Main()
 			
 			DetermineIPDCFromFileName(element.Name, dtRingInfo, out ipAddress, out dcName);
 
-			if (string.IsNullOrEmpty(dcName))
+			if (parseNonLogs && string.IsNullOrEmpty(dcName))
 			{
 				Console.WriteLine("Warning: DataCenter Name was not found for Path \"{0}\" in the Ring file.", element.Path);
 			}
@@ -484,7 +484,7 @@ void Main()
 					{
 						var dtSummaryLog = new System.Data.DataTable(excelWorkBookLogCassandra + "-" + ipAddress);
 						bool useMaxTimestamp = LogSummaryPeriods == null || LogSummaryPeriods.Length == 0;
-						var summaryPeriods = useMaxTimestamp ? new Tuple<DateTime, TimeSpan>[LogSummaryPeriodRanges.Length] : LogSummaryPeriods;
+						var summaryPeriods = useMaxTimestamp ? new Tuple<DateTime,TimeSpan>[LogSummaryPeriodRanges.Length] : LogSummaryPeriods;
 
 						if (useMaxTimestamp)
 						{
@@ -492,8 +492,10 @@ void Main()
 
 							for (int nIndex = 0; nIndex < summaryPeriods.Length; ++nIndex)
 							{
-								summaryPeriods[nIndex] = new Tuple<DateTime, TimeSpan>(currentRange = currentRange - LogSummaryPeriodRanges[nIndex].Item1,
-																						LogSummaryPeriodRanges[nIndex].Item2);
+								summaryPeriods[nIndex] = new Tuple<DateTime,TimeSpan>(currentRange,
+																							LogSummaryPeriodRanges[nIndex].Item2);
+
+								currentRange = currentRange - LogSummaryPeriodRanges[nIndex].Item1;
 							}
 						}
 
@@ -555,7 +557,7 @@ void Main()
 	#region Excel Creation/Formatting
 
 	//Cassandra Log (usually runs longer)
-	var runLogParsing = Task.Run(() =>
+	var runLogToExcel = Task.Run(() =>
 	{
 		if (LoadLogsIntoExcel)
 		{
@@ -588,140 +590,178 @@ void Main()
 	});
 
 	//Non-Logs
-	var excelFile = Common.Path.PathUtils.BuildFilePath(excelFilePath).FileInfo();
-	using (var excelPkg = new ExcelPackage(excelFile))
+	if (parseNonLogs)
 	{
-		//Ring
-		if (dtRingInfo.Rows.Count > 0)
+		var excelFile = Common.Path.PathUtils.BuildFilePath(excelFilePath).FileInfo();
+		using (var excelPkg = new ExcelPackage(excelFile))
 		{
-			DTLoadIntoExcelWorkBook(excelPkg,
-										excelWorkBookRingInfo,
-										dtRingInfo,
+			//Ring
+			if (dtRingInfo.Rows.Count > 0)
+			{
+				DTLoadIntoExcelWorkBook(excelPkg,
+											excelWorkBookRingInfo,
+											dtRingInfo,
+											workSheet =>
+											{
+												workSheet.Cells["1:1"].Style.Fill.PatternType = OfficeOpenXml.Style.ExcelFillStyle.LightGray;
+												workSheet.Cells["1:1"].Style.HorizontalAlignment = OfficeOpenXml.Style.ExcelHorizontalAlignment.Center;
+												//workSheet.Cells["1:1"].Style.Fill.BackgroundColor.SetColor(System.Drawing.Color.LightGray);
+												workSheet.View.FreezePanes(2, 1);
+												workSheet.Cells["A1:M1"].AutoFilter = true;
+												workSheet.Cells["F:F"].Style.Numberformat.Format = "#,###,###,##0.00";
+												workSheet.Cells["J:J"].Style.Numberformat.Format = "#,###,###,##0.00";
+												workSheet.Cells["G:G"].Style.Numberformat.Format = "##0.00%";
+												workSheet.Cells["K:K"].Style.Numberformat.Format = "#,###,###,##0";
+												workSheet.Cells["L:L"].Style.Numberformat.Format = "#,###,###,##0";
+												workSheet.Cells["H:H"].Style.Numberformat.Format = "d hh:mm";
+
+												workSheet.Cells.AutoFitColumns();
+											});
+			}
+
+			//TokenRing
+			if (dtTokenRange.Rows.Count > 0)
+			{
+				DTLoadIntoExcelWorkBook(excelPkg,
+										excelWorkBookRingTokenRanges,
+										dtTokenRange,
 										workSheet =>
 										{
 											workSheet.Cells["1:1"].Style.Fill.PatternType = OfficeOpenXml.Style.ExcelFillStyle.LightGray;
 											workSheet.Cells["1:1"].Style.HorizontalAlignment = OfficeOpenXml.Style.ExcelHorizontalAlignment.Center;
-											//workSheet.Cells["1:1"].Style.Fill.BackgroundColor.SetColor(System.Drawing.Color.LightGray);
+											//workBook.Cells["1:1"].Style.Fill.BackgroundColor.SetColor(System.Drawing.Color.LightGray);
 											workSheet.View.FreezePanes(2, 1);
-											workSheet.Cells["A1:M1"].AutoFilter = true;
-											workSheet.Cells["F:F"].Style.Numberformat.Format = "#,###,###,##0.00";											
-											workSheet.Cells["J:J"].Style.Numberformat.Format = "#,###,###,##0.00";	
-											workSheet.Cells["G:G"].Style.Numberformat.Format = "##0.00%";	
-											workSheet.Cells["K:K"].Style.Numberformat.Format = "#,###,###,##0";
-											workSheet.Cells["L:L"].Style.Numberformat.Format = "#,###,###,##0";
-											workSheet.Cells["H:H"].Style.Numberformat.Format = "d hh:mm";
-											
+											workSheet.Cells["A1:F1"].AutoFilter = true;
+											workSheet.Cells["C:D"].Style.Numberformat.Format = "0";
+											workSheet.Cells["E:E"].Style.Numberformat.Format = "#,###,###,##0";
+											workSheet.Cells["F:F"].Style.Numberformat.Format = "#,###,###,##0.00";
 											workSheet.Cells.AutoFitColumns();
 										});
-		}
+			}
 
-		//TokenRing
-		if (dtTokenRange.Rows.Count > 0)
-		{
+			//CFStats
 			DTLoadIntoExcelWorkBook(excelPkg,
-									excelWorkBookRingTokenRanges,
-									dtTokenRange,
-									workSheet =>
-									{
-										workSheet.Cells["1:1"].Style.Fill.PatternType = OfficeOpenXml.Style.ExcelFillStyle.LightGray;
-										workSheet.Cells["1:1"].Style.HorizontalAlignment = OfficeOpenXml.Style.ExcelHorizontalAlignment.Center;
-										//workBook.Cells["1:1"].Style.Fill.BackgroundColor.SetColor(System.Drawing.Color.LightGray);
-										workSheet.View.FreezePanes(2, 1);
-										workSheet.Cells["A1:F1"].AutoFilter = true;
-										workSheet.Cells["C:D"].Style.Numberformat.Format = "0";
-										workSheet.Cells["E:E"].Style.Numberformat.Format = "#,###,###,##0";
-										workSheet.Cells["F:F"].Style.Numberformat.Format = "#,###,###,##0.00";
-										workSheet.Cells.AutoFitColumns();
-									});
-		}
+										excelWorkBookCFStats,
+										dtCFStatsStack,
+										workSheet =>
+										{
+											workSheet.Cells["1:1"].Style.Fill.PatternType = OfficeOpenXml.Style.ExcelFillStyle.LightGray;
+											workSheet.Cells["1:1"].Style.HorizontalAlignment = OfficeOpenXml.Style.ExcelHorizontalAlignment.Center;
+											//workBook.Cells["1:1"].Style.Fill.BackgroundColor.SetColor(System.Drawing.Color.LightGray);
+											workSheet.Cells["H:H"].Style.Numberformat.Format = "#,###,###,##0";
 
-		//CFStats
-		DTLoadIntoExcelWorkBook(excelPkg,
-									excelWorkBookCFStats,
-									dtCFStatsStack,
-									workSheet =>
-									{
-										workSheet.Cells["1:1"].Style.Fill.PatternType = OfficeOpenXml.Style.ExcelFillStyle.LightGray;
-										workSheet.Cells["1:1"].Style.HorizontalAlignment = OfficeOpenXml.Style.ExcelHorizontalAlignment.Center;
-										//workBook.Cells["1:1"].Style.Fill.BackgroundColor.SetColor(System.Drawing.Color.LightGray);
-										workSheet.Cells["H:H"].Style.Numberformat.Format = "#,###,###,##0";
-										
-										//workSheet.Cells["H1"].AddComment("Change Numeric Format to Display Decimals", "Rich Andersen");
-										workSheet.Cells["H1"].Value = workSheet.Cells["H1"].Text + "(Formatted)"; 
-										workSheet.View.FreezePanes(2, 1);
-										workSheet.Cells["A1:H1"].AutoFilter = true;
-										workSheet.Cells.AutoFitColumns();
-									},
-									false,
-									-1);
+											//workSheet.Cells["H1"].AddComment("Change Numeric Format to Display Decimals", "Rich Andersen");
+											workSheet.Cells["H1"].Value = workSheet.Cells["H1"].Text + "(Formatted)";
+											workSheet.View.FreezePanes(2, 1);
+											workSheet.Cells["A1:H1"].AutoFilter = true;
+											workSheet.Cells.AutoFitColumns();
+										},
+										false,
+										-1);
 
-		//TPStats
-		DTLoadIntoExcelWorkBook(excelPkg, 
-									excelWorkBookTPStats,
-									dtTPStatsStack,
-									workSheet =>
-									{
-										workSheet.Cells["1:1"].Style.Fill.PatternType = OfficeOpenXml.Style.ExcelFillStyle.LightGray;
-										workSheet.Cells["1:1"].Style.HorizontalAlignment = OfficeOpenXml.Style.ExcelHorizontalAlignment.Center;
-										//workBook.Cells["1:1"].Style.Fill.BackgroundColor.SetColor(System.Drawing.Color.LightGray);
-										workSheet.Cells["D:I"].Style.Numberformat.Format = "#,###,###,##0";
-										
-										workSheet.View.FreezePanes(2, 1);
-										workSheet.Cells["A1:I1"].AutoFilter = true;
-										workSheet.Cells.AutoFitColumns();
-									},
-									false,
-									-1);
-
-		//Compacation History
-		DTLoadIntoExcelWorkBook(excelPkg,
-									excelWorkBookCompactionHist,
-									dtCompHistStack,
-									workSheet =>
-									{
-										workSheet.Cells["1:1"].Style.Fill.PatternType = OfficeOpenXml.Style.ExcelFillStyle.LightGray;
-										workSheet.Cells["1:1"].Style.HorizontalAlignment = OfficeOpenXml.Style.ExcelHorizontalAlignment.Center;
-										//workBook.Cells["1:1"].Style.Fill.BackgroundColor.SetColor(System.Drawing.Color.LightGray);
-										workSheet.Cells["E:E"].Style.Numberformat.Format = "mm/dd/yyyy hh:mm:ss";
-										workSheet.Cells["F:F"].Style.Numberformat.Format = "#,###,###,##0";
-										workSheet.Cells["G:G"].Style.Numberformat.Format = "#,###,###,##0.00";
-										workSheet.Cells["H:H"].Style.Numberformat.Format = "#,###,###,##0";
-										workSheet.Cells["I:I"].Style.Numberformat.Format = "#,###,###,##0.00";
-										workSheet.Cells["J1"].AddComment("The notation means {tables:rows}. For example {1:3, 3:1} means 3 rows were taken from one sstable (1:3) and 1 row taken from 3 (3:1) sstables, all to make the one sstable in that compaction operation.", "Rich Andersen");
-										
-										workSheet.View.FreezePanes(2, 1);
-										workSheet.Cells["A1:J1"].AutoFilter = true;
-										workSheet.Cells.AutoFitColumns();
-									},
-									false,
-									-1);
-
-		//Cassandra Log Summary
-		DTLoadIntoExcelWorkBook(excelPkg,
-									excelWorkBookSummaryLogCassandra,
-									dtLogSummaryStack,
-									workSheet =>
-									{
-										workSheet.Cells["1:1"].Style.Fill.PatternType = OfficeOpenXml.Style.ExcelFillStyle.LightGray;
-										workSheet.Cells["1:1"].Style.HorizontalAlignment = OfficeOpenXml.Style.ExcelHorizontalAlignment.Center;
-										//workBook.Cells["1:1"].Style.Fill.BackgroundColor.SetColor(System.Drawing.Color.LightGray);
-										workSheet.Cells["A:A"].Style.Numberformat.Format = "mm/dd/yyyy hh:mm";
-										workSheet.Cells["F:F"].Style.Numberformat.Format = "#,###,###,##0";
-										workSheet.Cells["B:B"].Style.Numberformat.Format = "d hh:mm";
-										
-										workSheet.View.FreezePanes(2, 1);
-										workSheet.Cells["A1:H1"].AutoFilter = true;
-										workSheet.Cells.AutoFitColumns();
-									},
-									false,
-									-1);
-
-		//DDL Keyspace
-		if (dtKeySpace.Rows.Count > 0)
-		{
+			//TPStats
 			DTLoadIntoExcelWorkBook(excelPkg,
-										excelWorkBookDDLKeyspaces,
-										dtKeySpace,
+										excelWorkBookTPStats,
+										dtTPStatsStack,
+										workSheet =>
+										{
+											workSheet.Cells["1:1"].Style.Fill.PatternType = OfficeOpenXml.Style.ExcelFillStyle.LightGray;
+											workSheet.Cells["1:1"].Style.HorizontalAlignment = OfficeOpenXml.Style.ExcelHorizontalAlignment.Center;
+											//workBook.Cells["1:1"].Style.Fill.BackgroundColor.SetColor(System.Drawing.Color.LightGray);
+											workSheet.Cells["D:I"].Style.Numberformat.Format = "#,###,###,##0";
+
+											workSheet.View.FreezePanes(2, 1);
+											workSheet.Cells["A1:I1"].AutoFilter = true;
+											workSheet.Cells.AutoFitColumns();
+										},
+										false,
+										-1);
+
+			//Compacation History
+			DTLoadIntoExcelWorkBook(excelPkg,
+										excelWorkBookCompactionHist,
+										dtCompHistStack,
+										workSheet =>
+										{
+											workSheet.Cells["1:1"].Style.Fill.PatternType = OfficeOpenXml.Style.ExcelFillStyle.LightGray;
+											workSheet.Cells["1:1"].Style.HorizontalAlignment = OfficeOpenXml.Style.ExcelHorizontalAlignment.Center;
+											//workBook.Cells["1:1"].Style.Fill.BackgroundColor.SetColor(System.Drawing.Color.LightGray);
+											workSheet.Cells["E:E"].Style.Numberformat.Format = "mm/dd/yyyy hh:mm:ss";
+											workSheet.Cells["F:F"].Style.Numberformat.Format = "#,###,###,##0";
+											workSheet.Cells["G:G"].Style.Numberformat.Format = "#,###,###,##0.00";
+											workSheet.Cells["H:H"].Style.Numberformat.Format = "#,###,###,##0";
+											workSheet.Cells["I:I"].Style.Numberformat.Format = "#,###,###,##0.00";
+											workSheet.Cells["J1"].AddComment("The notation means {tables:rows}. For example {1:3, 3:1} means 3 rows were taken from one sstable (1:3) and 1 row taken from 3 (3:1) sstables, all to make the one sstable in that compaction operation.", "Rich Andersen");
+
+											workSheet.View.FreezePanes(2, 1);
+											workSheet.Cells["A1:J1"].AutoFilter = true;
+											workSheet.Cells.AutoFitColumns();
+										},
+										false,
+										-1);
+
+			//Cassandra Log Summary
+			DTLoadIntoExcelWorkBook(excelPkg,
+										excelWorkBookSummaryLogCassandra,
+										dtLogSummaryStack,
+										workSheet =>
+										{
+											workSheet.Cells["1:1"].Style.Fill.PatternType = OfficeOpenXml.Style.ExcelFillStyle.LightGray;
+											workSheet.Cells["1:1"].Style.HorizontalAlignment = OfficeOpenXml.Style.ExcelHorizontalAlignment.Center;
+											//workBook.Cells["1:1"].Style.Fill.BackgroundColor.SetColor(System.Drawing.Color.LightGray);
+											workSheet.Cells["A:A"].Style.Numberformat.Format = "mm/dd/yyyy hh:mm";
+											workSheet.Cells["F:F"].Style.Numberformat.Format = "#,###,###,##0";
+											workSheet.Cells["B:B"].Style.Numberformat.Format = "d hh:mm";
+
+											workSheet.View.FreezePanes(2, 1);
+											workSheet.Cells["A1:H1"].AutoFilter = true;
+											workSheet.Cells.AutoFitColumns();
+										},
+										false,
+										-1);
+
+			//DDL Keyspace
+			if (dtKeySpace.Rows.Count > 0)
+			{
+				DTLoadIntoExcelWorkBook(excelPkg,
+											excelWorkBookDDLKeyspaces,
+											dtKeySpace,
+											workSheet =>
+											{
+												workSheet.Cells["1:1"].Style.Fill.PatternType = OfficeOpenXml.Style.ExcelFillStyle.LightGray;
+												workSheet.Cells["1:1"].Style.HorizontalAlignment = OfficeOpenXml.Style.ExcelHorizontalAlignment.Center;
+												//workBook.Cells["1:1"].Style.Fill.BackgroundColor.SetColor(System.Drawing.Color.LightGray);
+												workSheet.View.FreezePanes(2, 1);
+												workSheet.Cells["A1:E1"].AutoFilter = true;
+												workSheet.Cells.AutoFitColumns();
+											});
+			}
+
+			//DDL CQL Table
+			if (dtTable.Rows.Count > 0)
+			{
+				DTLoadIntoExcelWorkBook(excelPkg,
+										excelWorkBookDDLTables,
+										dtTable,
+										workSheet =>
+											{
+												workSheet.Cells["1:1"].Style.Fill.PatternType = OfficeOpenXml.Style.ExcelFillStyle.LightGray;
+												workSheet.Cells["1:1"].Style.HorizontalAlignment = OfficeOpenXml.Style.ExcelHorizontalAlignment.Center;
+												//workBook.Cells["1:1"].Style.Fill.BackgroundColor.SetColor(System.Drawing.Color.LightGray);
+												workSheet.View.FreezePanes(2, 1);
+												workSheet.Cells["A1:F1"].AutoFilter = true;
+												workSheet.Cells.AutoFitColumns();
+											});
+			}
+
+			//Yaml
+			runYamlListIntoDT.Wait();
+
+			if (dtYaml.Rows.Count > 0)
+			{
+				DTLoadIntoExcelWorkBook(excelPkg,
+										excelWorkBookYaml,
+										dtYaml,
 										workSheet =>
 										{
 											workSheet.Cells["1:1"].Style.Fill.PatternType = OfficeOpenXml.Style.ExcelFillStyle.LightGray;
@@ -731,48 +771,14 @@ void Main()
 											workSheet.Cells["A1:E1"].AutoFilter = true;
 											workSheet.Cells.AutoFitColumns();
 										});
-		}
+			}
 
-		//DDL CQL Table
-		if (dtTable.Rows.Count > 0)
-		{
-			DTLoadIntoExcelWorkBook(excelPkg,
-									excelWorkBookDDLTables,
-									dtTable,
-									workSheet =>
-										{
-											workSheet.Cells["1:1"].Style.Fill.PatternType = OfficeOpenXml.Style.ExcelFillStyle.LightGray;
-											workSheet.Cells["1:1"].Style.HorizontalAlignment = OfficeOpenXml.Style.ExcelHorizontalAlignment.Center;
-											//workBook.Cells["1:1"].Style.Fill.BackgroundColor.SetColor(System.Drawing.Color.LightGray);
-											workSheet.View.FreezePanes(2, 1);
-											workSheet.Cells["A1:F1"].AutoFilter = true;
-											workSheet.Cells.AutoFitColumns();
-										});
-		}
-
-		//Yaml
-		runYamlListIntoDT.Wait();
-
-		if (dtYaml.Rows.Count > 0)
-		{
-			DTLoadIntoExcelWorkBook(excelPkg,
-									excelWorkBookYaml,
-									dtYaml,
-									workSheet =>
-									{
-										workSheet.Cells["1:1"].Style.Fill.PatternType = OfficeOpenXml.Style.ExcelFillStyle.LightGray;
-										workSheet.Cells["1:1"].Style.HorizontalAlignment = OfficeOpenXml.Style.ExcelHorizontalAlignment.Center;
-										//workBook.Cells["1:1"].Style.Fill.BackgroundColor.SetColor(System.Drawing.Color.LightGray);
-										workSheet.View.FreezePanes(2, 1);
-										workSheet.Cells["A1:E1"].AutoFilter = true;
-										workSheet.Cells.AutoFitColumns();
-									});
-		}
-
-		excelPkg.Save();
-	} //Save non-log data
+			excelPkg.Save();
+		} //Save non-log data
+		Console.WriteLine("*** Excel WorkBooks saved to \"{0}\"", excelFile.FullName);
+	}
 	
-	runLogParsing.Wait();
+	runLogToExcel.Wait();
 	
 	#endregion
 }
@@ -815,7 +821,7 @@ bool DetermineIPDCFromFileName(string pathItem, DataTable dtRingInfo, out string
 		}
 	}
 	
-	var dcRow = dtRingInfo.Rows.Find(ipAddress);
+	var dcRow = dtRingInfo.Rows.Count == 0 ? null : dtRingInfo.Rows.Find(ipAddress);
 
 	if (dcRow == null)
 	{
@@ -1321,17 +1327,17 @@ void ReadTPStatsFileParseIntoDataTable(IFilePath tpstatsFilePath,
 		dtTPStats.Columns.Add("Node IPAdress", typeof(string));
 		dtTPStats.Columns.Add("Attribute", typeof(string));
 		
-		dtTPStats.Columns.Add("Active", typeof(int));
+		dtTPStats.Columns.Add("Active", typeof(long));
 		dtTPStats.Columns["Active"].AllowDBNull = true;
-		dtTPStats.Columns.Add("Pending", typeof(int));
+		dtTPStats.Columns.Add("Pending", typeof(long));
 		dtTPStats.Columns["Pending"].AllowDBNull = true;
-		dtTPStats.Columns.Add("Completed", typeof(int));
+		dtTPStats.Columns.Add("Completed", typeof(long));
 		dtTPStats.Columns["Completed"].AllowDBNull = true;
-		dtTPStats.Columns.Add("Blocked", typeof(int));
+		dtTPStats.Columns.Add("Blocked", typeof(long));
 		dtTPStats.Columns["Blocked"].AllowDBNull = true;
-		dtTPStats.Columns.Add("All time blocked", typeof(int));
+		dtTPStats.Columns.Add("All time blocked", typeof(long));
 		dtTPStats.Columns["All time blocked"].AllowDBNull = true;
-		dtTPStats.Columns.Add("Dropped", typeof(int));
+		dtTPStats.Columns.Add("Dropped", typeof(long));
 		dtTPStats.Columns["Dropped"].AllowDBNull = true;
 	}
 
@@ -1374,16 +1380,16 @@ void ReadTPStatsFileParseIntoDataTable(IFilePath tpstatsFilePath,
 		if (parsingSection == 0)
 		{
 			//Pool Name                    Active   Pending      Completed   Blocked  All time blocked
-			dataRow["Active"] = int.Parse(parsedValue[1]);
-			dataRow["Pending"] = int.Parse(parsedValue[2]);
-			dataRow["Completed"] = int.Parse(parsedValue[3]);
-			dataRow["Blocked"] = int.Parse(parsedValue[4]);
-			dataRow["All time blocked"] = int.Parse(parsedValue[5]);
+			dataRow["Active"] = long.Parse(parsedValue[1]);
+			dataRow["Pending"] = long.Parse(parsedValue[2]);
+			dataRow["Completed"] = long.Parse(parsedValue[3]);
+			dataRow["Blocked"] = long.Parse(parsedValue[4]);
+			dataRow["All time blocked"] = long.Parse(parsedValue[5]);
 		}
 		else if (parsingSection == 1)
 		{
 			//Message type           Dropped
-			dataRow["Dropped"] = int.Parse(parsedValue[1]);
+			dataRow["Dropped"] = long.Parse(parsedValue[1]);
 		}
 
 		dtTPStats.Rows.Add(dataRow);
@@ -1425,6 +1431,9 @@ void ReadCassandraLogParseIntoDataTable(IFilePath clogFilePath,
 	DateTime lineDateTime;
 	string lineIPAddress;
 	int skipLines = -1;
+	string tableItem = null;
+	int tableItemPos = -1;
+	int tableItemValuePos = -1;
 
 	maxTimestamp = DateTime.MinValue;
 	
@@ -1460,11 +1469,12 @@ void ReadCassandraLogParseIntoDataTable(IFilePath clogFilePath,
 		//		java.io.FileNotFoundException: _i2v5.nvm
 		//		at org.apache.lucene.store.FSDirectory.fileLength(FSDirectory.java:267)
 		//	WARN [ReadStage:1325219] 2016-07-14 17:41:21,164 SliceQueryFilter.java (line 231) Read 11 live and 1411 tombstoned cells in cma.mls_records_property (see tombstone_warn_threshold). 5000 columns was requested, slices=[-]
-		
+
 		//INFO [CompactionExecutor:7414] 2016-07-26 23:11:50,335 CompactionController.java (line 191) Compacting large row billing/account_payables:20160726:FMCC (348583137 bytes) incrementally
 		//INFO [ScheduledTasks:1] 2016-07-30 06:32:53,397 GCInspector.java (line 116) GC for ParNew: 394 ms for 1 collections, 13571498424 used; max is 25340346368
 		//WARN [Native-Transport-Requests:30] 2016-08-01 22:58:11,080 BatchStatement.java (line 226) Batch of prepared statements for [clearcore.documents_case] is of size 71809, exceeding specified threshold of 65536 by 6273.
 		//WARN [ReadStage:1907643] 2016-08-01 23:26:42,845 SliceQueryFilter.java (line 231) Read 14 live and 1344 tombstoned cells in cma.mls_records_property (see tombstone_warn_threshold). 5000 columns was requested, slices=[-]
+		//INFO  [Service Thread] 2016-08-10 06:51:10,572  GCInspector.java:258 - G1 Young Generation GC in 264ms.  G1 Eden Space: 3470786560 -> 0; G1 Old Gen: 2689326672 -> 2934172000; G1 Survivor Space: 559939584 -> 35651584; 
 
 		#region Exception Log Info Parsing
 		if (parsedValues[0].ToLower().Contains("exception"))
@@ -1630,8 +1640,23 @@ void ReadCassandraLogParseIntoDataTable(IFilePath clogFilePath,
 				parsedValues[4] = parsedValues[4].Substring(0, startPos);
 			}
 		}
-		
+		else if (parsedValues[4].Contains(":"))
+		{
+			var startPos = parsedValues[4].LastIndexOf(':');
+
+			if (startPos >= 0)
+			{
+				parsedValues[4] = parsedValues[4].Substring(0, startPos);
+			}
+		}
+
 		dataRow["Item"] = parsedValues[4];
+
+		if (parsedValues[4] != tableItem)
+		{
+			tableItemPos = -1;
+			tableItemValuePos = -1;
+		}
 
 		var logDesc = new StringBuilder();
 		var startRange = parsedValues[5] == "-" ? 6 : 5;
@@ -1705,14 +1730,15 @@ void ReadCassandraLogParseIntoDataTable(IFilePath clogFilePath,
 			{
 				//GCInspector.java (line 116) GC for ParNew: 394 ms for 1 collections, 13571498424 used; max is 25340346368
 				//GCInspector.java (line 119) GC forConcurrentMarkSweep: 15132 ms for 2 collections, 4229845696 used; max is 25125584896
+				//GCInspector.java:258 - G1 Young Generation GC in 264ms.  G1 Eden Space: 3470786560 -> 0; G1 Old Gen: 2689326672 -> 2934172000; G1 Survivor Space: 559939584 -> 35651584; 
 				if (nCell == itemPos)
 				{
-					object msPause;
+					var time = DetermineTime(parsedValues[nCell]);
 
-					if(StringFunctions.ParseIntoNumeric(parsedValues[nCell], out msPause) && (int) msPause >= gcPausedFlagThresholdInMS)
+					if (time is int && (int)time >= gcPausedFlagThresholdInMS)
 					{
 						dataRow["Flagged"] = true;
-						dataRow["Assocated Value"] = msPause;
+						dataRow["Assocated Value"] = DetermineTime(parsedValues[nCell]);
 					}
 				}
 				if (parsedValues[nCell] == "ParNew:"
@@ -1720,6 +1746,10 @@ void ReadCassandraLogParseIntoDataTable(IFilePath clogFilePath,
 						|| parsedValues[nCell] == "ConcurrentMarkSweep:")
 				{
 					itemPos = nCell + 1;
+				}
+				else if (parsedValues[nCell] == "Young")
+				{
+					itemPos = nCell + 4;
 				}
 			}
 			else if (parsedValues[4] == "BatchStatement.java")
@@ -1779,7 +1809,41 @@ void ReadCassandraLogParseIntoDataTable(IFilePath clogFilePath,
 					itemValuePos = nCell + 4;
 				}
 			}
+			else if (parsedValues[4] == "StatusLogger.java")
+			{
+				//StatusLogger.java:51 - Pool Name                    Active   Pending      Completed   Blocked  All Time Blocked
+				//StatusLogger.java:66 - MutationStage                     4         0     2383662788         0                 0
+				//StatusLogger.java:75 - CompactionManager                 2         3
+				//StatusLogger.java:87 - MessagingService                n/a       0/1
+				//
+				//StatusLogger.java:97 - Cache Type                     Size                 Capacity               KeysToSave
+				//StatusLogger.java:99 - KeyCache                   95002384                104857600                      all
+				//
+				//StatusLogger.java:112 - ColumnFamily                Memtable ops,data
+				//StatusLogger.java:115 - dse_perf.node_slow_log           8150,3374559
+								
+				if (parsedValues[nCell] == "ColumnFamily")
+				{
+					tableItem = parsedValues[4];
+					tableItemPos = nCell;
+				}
+				else if (parsedValues[nCell] == "Pool")
+				{
+					tableItem = null;
+					tableItemPos = -1;
+				}
+				else if (parsedValues[nCell] == "Cache")
+				{
+					tableItem = null;
+					tableItemPos = -1;
+				}
+				else if (nCell == tableItemPos)
+				{
+					var splitItems = SplitTableName(parsedValues[nCell], null);
 
+					dataRow["Assocated Item"] = splitItems.Item1 + '.' + splitItems.Item2;
+				}
+			}
 
 			logDesc.Append(' ');
 			logDesc.Append(parsedValues[nCell]);
@@ -1947,7 +2011,7 @@ void ReadCQLDDLParseIntoDataTable(IFilePath cqlDDLFilePath,
 					//		'class': 'LeveledCompactionStrategy'
 					//AND compression =
 					//'sstable_compression': 'LZ4Compressor'
-					//;
+					//;					
 					var startParan = cqlStr.IndexOf('(');
 					var endParan = cqlStr.LastIndexOf(')');
 					var strFrtTbl = cqlStr.Substring(0,startParan);
@@ -2051,10 +2115,11 @@ void ReadCQLDDLParseIntoDataTable(IFilePath cqlDDLFilePath,
 						
 						if (optKeyword.StartsWith("compaction", StringComparison.OrdinalIgnoreCase))
 						{
-							
-							var classSplit = ParseKeyValuePair(optKeyword).Item2.Split(':');
-							var strategy = classSplit.Last().Trim();
-							dataRow["Compaction Strategy"] = RemoveNamespace(strategy.Substring(0, strategy.Length - 1).TrimEnd());
+							var kwOptions = ParseKeyValuePair(optKeyword).Item2;
+							var classPos = kwOptions.IndexOf("class");
+							var classSplit = kwOptions.Substring(classPos).Split(new char[] { ':', ',', '}'});
+							var strategy = classSplit[1].Trim();
+							dataRow["Compaction Strategy"] = RemoveNamespace(strategy);
 						}
 							
 					}
@@ -2131,9 +2196,28 @@ void ReadCompactionHistFileParseIntoDataTable(IFilePath cmphistFilePath,
 		}
 		else
 		{
-			currentKeySpace = RemoveQuotes(parsedLine[1].Substring(0, 19));
-			currentTable = RemoveQuotes(parsedLine[1].Substring(19));
-			offSet = 1;
+			if (parsedLine[1].Length > 20)
+			{
+				currentKeySpace = RemoveQuotes(parsedLine[1].Substring(0, 19));
+				currentTable = RemoveQuotes(parsedLine[1].Substring(19));
+				offSet = 1;
+			}
+			else
+			{
+				currentKeySpace = RemoveQuotes(parsedLine[1]);
+
+				if (parsedLine[2].Length > 30)
+				{
+					currentTable = RemoveQuotes(parsedLine[2].Substring(0, 29));					
+					parsedLine[2] = parsedLine[2].Substring(29);
+					offSet = 1;
+				}
+				else
+				{
+					currentTable = RemoveQuotes(parsedLine[2]);
+					offSet = 0;
+				}
+			}
 		}
 
 		if (ignoreKeySpaces.Contains(currentKeySpace))
@@ -2574,7 +2658,7 @@ void ReadYamlFileParseIntoList(IFilePath yamlFilePath,
 	foreach (var element in yamlList)
 	{
 		separateParams = Common.StringFunctions.Split(element.CmdParams,
-														new char[] { ',', ' ', ':', '=' },
+														new char[] { ',', ' ', '=' },
 														Common.StringFunctions.IgnoreWithinDelimiterFlag.Text,
 														Common.StringFunctions.SplitBehaviorOptions.Default | Common.StringFunctions.SplitBehaviorOptions.RemoveEmptyEntries);
 
@@ -2586,20 +2670,44 @@ void ReadYamlFileParseIntoList(IFilePath yamlFilePath,
 		{
 			var keyValues = new List<Tuple<string, string>>();
 			string subCmd = string.Empty;
+			bool optionsFnd = false;
 			
 			for (int nIndex = 0; nIndex < separateParams.Count; ++nIndex)
 			{
-				if (separateParams[nIndex] != "parameters")
+				if (separateParams[nIndex][separateParams[nIndex].Length - 1] == ':')
 				{
+					separateParams[nIndex] = separateParams[nIndex].Substring(0,separateParams[nIndex].Length - 1);
+
+					if(separateParams[nIndex + 1][separateParams[nIndex + 1].Length - 1] == ':')
+					{
+						subCmd = separateParams[nIndex] + '.';
+						++nIndex;
+						separateParams[nIndex] = separateParams[nIndex].Substring(0,separateParams[nIndex].Length - 1);
+					}				
+				}
+				
+				if (separateParams[nIndex].EndsWith("_options"))
+				{
+					optionsFnd = true;
+					subCmd += separateParams[nIndex] + '.';
+				}
+				else if (optionsFnd)
+				{
+					keyValues.Add(new Tuple<string, string>(DetermineProperFormat(subCmd + separateParams[nIndex], true, false), DetermineProperFormat(separateParams[++nIndex])));
+				}
+				else if (separateParams[nIndex] != "parameters")
+				{
+					optionsFnd = false;
+					
 					if (separateParams[nIndex + 1].Length > 0 && separateParams[nIndex + 1][0] == '{')
                     {
-						subCmd = separateParams[nIndex] + '.';
+						subCmd += separateParams[nIndex] + '.';
 						++nIndex;
 						separateParams[nIndex] = separateParams[nIndex].Substring(1);
 					}
 					
-					keyValues.Add(new Tuple<string, string>(DetermineProperFormat(subCmd + separateParams[nIndex]), DetermineProperFormat(separateParams[++nIndex])));
-				}
+					keyValues.Add(new Tuple<string, string>(DetermineProperFormat(subCmd + separateParams[nIndex], true, false), DetermineProperFormat(separateParams[++nIndex])));
+				}				
 			}
 			element.KeyValueParams = keyValues.OrderBy(v => v.Item1);
 		}
@@ -3188,7 +3296,7 @@ string RemoveNamespace(string className)
 	return className;
 }
 
-string DetermineProperFormat(string strValue, bool ignoreBraces = false)
+string DetermineProperFormat(string strValue, bool ignoreBraces = false, bool removeNamespace = true)
 {
 	string strValueA;
 	object item;
@@ -3236,7 +3344,7 @@ string DetermineProperFormat(string strValue, bool ignoreBraces = false)
 		return item.ToString();
 	}
 	
-	return RemoveNamespace(strValue);
+	return removeNamespace ? RemoveNamespace(strValue) : strValue;
 }
 
 string RemoveCommentInLine(string line, char commentChar = '#')
@@ -3249,6 +3357,24 @@ string RemoveCommentInLine(string line, char commentChar = '#')
 	}
 	
 	return line;
+}
+
+object DetermineTime(string strTime)
+{
+	var timeAbbrPos = strTime.LastIndexOfAny(new char[] { 'm', 's', 'h' });
+	object numTime;
+	
+	if (timeAbbrPos > 0)
+	{
+		strTime = strTime.Substring(0, timeAbbrPos);
+	}
+
+	if (StringFunctions.ParseIntoNumeric(strTime, out numTime))
+	{
+		return numTime;
+	}
+	
+	return strTime;
 }
 
 #endregion
