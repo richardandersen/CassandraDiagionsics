@@ -34,7 +34,7 @@
 const int MaxRowInExcelWorkSheet = 50000; //-1 disabled
 const int MaxRowInExcelWorkBook = 500000; //-1 disabled
 const int GCPausedFlagThresholdInMS = 5000; //Defines a threshold that will flag a log entry in both the log summary (only if GCInspector.java) and log worksheets
-static TimeSpan LogTimeSpanRange = new TimeSpan(1, 0, 0, 0); //Only import log entries for the past timespan (e.g., the last 5 days) based on LogCurrentDate.
+static TimeSpan LogTimeSpanRange = new TimeSpan(2, 0, 0, 0); //Only import log entries for the past timespan (e.g., the last 5 days) based on LogCurrentDate.
 static DateTime LogCurrentDate = DateTime.MinValue; //DateTime.Now.Date; //If DateTime.MinValue all log entries are parsed
 static int LogMaxRowsPerNode = -1; // -1 disabled
 static string[] LogSummaryIndicatorType = new string[] { "WARN", "ERROR" };
@@ -95,16 +95,17 @@ void Main()
 	var parseNonLogs = true;
 	
 	//Excel Workbook names
-	var excelWorkBookRingInfo = "Node Information";
-	var excelWorkBookRingTokenRanges = "Ring Token Ranges";
-	var excelWorkBookCFStats = "CFStats";
-	var excelWorkBookTPStats = "TPStats";
-	var excelWorkBookLogCassandra = "Cassandra Log";
-	var excelWorkBookDDLKeyspaces = "DDL Keyspaces";
-	var excelWorkBookDDLTables = "DDL Tables";
-	var excelWorkBookCompactionHist = "Compaction History";
-	var excelWorkBookYaml = "Settings-Yamls";
-	var excelWorkBookSummaryLogCassandra = "Cassandra Summary Logs";
+	var excelWorkSheetRingInfo = "Node Information";
+	var excelWorkSheetRingTokenRanges = "Ring Token Ranges";
+	var excelWorkSheetCFStats = "CFStats";
+	var excelWorkSheetTPStats = "TPStats";
+	var excelWorkSheetLogCassandra = "Cassandra Log";
+	var excelWorkSheetDDLKeyspaces = "DDL Keyspaces";
+	var excelWorkSheetDDLTables = "DDL Tables";
+	var excelWorkSheetCompactionHist = "Compaction History";
+	var excelWorkSheetYaml = "Settings-Yamls";
+	var excelWorkSheetOSMachineInfo= "OS-Machine Info";
+	var excelWorkSheetSummaryLogCassandra = "Cassandra Summary Logs";
 
 	List<string> ignoreKeySpaces = new List<string>() { "dse_system", "system_auth", "system_traces", "system", "dse_perf"  }; //MUST BE IN LOWER CASe
 	List<string> cfstatsCreateMBColumns = new List<string>() { "memory used", "bytes", "space used", "data size"}; //MUST BE IN LOWER CASE -- CFStats attributes that contains these phrases/words will convert their values from bytes to MB in a separate Excel Column
@@ -135,17 +136,26 @@ void Main()
 	var cqlDDLDirFile = @".\cqlsh\describe_schema";
 	var cqlDDLDirFileExt = @"*.cql";
 	var nodetoolCFHistogramsFile = "cfhistograms"; //this is based on keyspace and table and not sure of the format. HC doc has it as cfhistograms_keyspace_table.txt
-	
+	var osmachineFiles = new string[] { "java_heap.json",
+										"java_system_properties.json",
+										"machine-info.json",
+										"os-info.json",
+										@".\os-metrics\cpu.json",
+										@".\os-metrics\load_avg.json",
+										@".\os-metrics\memory.json",
+										@".\ntp\ntpstat",
+										@".\ntp\ntptime"};
+
 	#endregion
 	
 	#region Local Variables
 	
 	//Local Variables used for processing
 	bool opsCtrDiag = false;	
-	var dtRingInfo = new System.Data.DataTable(excelWorkBookRingInfo);
-	var dtTokenRange = new System.Data.DataTable(excelWorkBookRingTokenRanges);
-	var dtKeySpace = new System.Data.DataTable(excelWorkBookDDLKeyspaces);
-	var dtTable = new System.Data.DataTable(excelWorkBookDDLTables);
+	var dtRingInfo = new System.Data.DataTable(excelWorkSheetRingInfo);
+	var dtTokenRange = new System.Data.DataTable(excelWorkSheetRingTokenRanges);
+	var dtKeySpace = new System.Data.DataTable(excelWorkSheetDDLKeyspaces);
+	var dtTable = new System.Data.DataTable(excelWorkSheetDDLTables);
 	var cqlHashCheck = new Dictionary < string, int >();
 	var dtCFStatsStack = new Common.Patterns.Collections.LockFree.Stack<System.Data.DataTable>();
 	var dtTPStatsStack = new Common.Patterns.Collections.LockFree.Stack<System.Data.DataTable>();
@@ -153,7 +163,8 @@ void Main()
 	var dtLogSummaryStack = new Common.Patterns.Collections.LockFree.Stack<System.Data.DataTable>();
 	var dtCompHistStack = new Common.Patterns.Collections.LockFree.Stack<System.Data.DataTable>();
 	var listCYamlStack = new Common.Patterns.Collections.LockFree.Stack<List<YamlInfo>>();
-	var dtYaml = new System.Data.DataTable(excelWorkBookYaml);
+	var dtYaml = new System.Data.DataTable(excelWorkSheetYaml);
+	var dtOSMachineInfo = new System.Data.DataTable(excelWorkSheetOSMachineInfo);
 
 	var includeLogEntriesAfterThisTimeFrame = LogCurrentDate == DateTime.MinValue ? DateTime.MinValue : LogCurrentDate - LogTimeSpanRange;
 	
@@ -169,8 +180,9 @@ void Main()
 	{
 		Console.WriteLine("Warning: All Log Entries willbe parsed!");
 	}
-	
+
 	var diagPath = Common.Path.PathUtils.BuildDirectoryPath(diagnosticPath);
+	var logParsingTasks = new Common.Patterns.Collections.ThreadSafe.List<Task>();
 
 	if (diagnosticNoSubFolders)
 	{
@@ -240,7 +252,7 @@ void Main()
 						}
 						
 				    	Console.WriteLine("Processing File \"{0}\"", diagFile.Path);
-						var dtCFStats = new System.Data.DataTable(excelWorkBookCFStats + "-" + ipAddress);
+						var dtCFStats = new System.Data.DataTable(excelWorkSheetCFStats + "-" + ipAddress);
 						dtCFStatsStack.Push(dtCFStats);
 						ReadCFStatsFileParseIntoDataTable((IFilePath)diagFile, ipAddress, dcName, dtCFStats, ignoreKeySpaces, cfstatsCreateMBColumns);
 					}
@@ -252,7 +264,7 @@ void Main()
 						}
 						
 						Console.WriteLine("Processing File \"{0}\"", diagFile.Path);
-						var dtTPStats = new System.Data.DataTable(excelWorkBookTPStats + "-" + ipAddress);
+						var dtTPStats = new System.Data.DataTable(excelWorkSheetTPStats + "-" + ipAddress);
 						dtTPStatsStack.Push(dtTPStats);
 						ReadTPStatsFileParseIntoDataTable((IFilePath)diagFile, ipAddress, dcName, dtTPStats);
 					}
@@ -274,7 +286,7 @@ void Main()
 						}
 						
 						Console.WriteLine("Processing File \"{0}\"", diagFile.Path);
-						var dtCompHist = new System.Data.DataTable(excelWorkBookCompactionHist + "-" + ipAddress);
+						var dtCompHist = new System.Data.DataTable(excelWorkSheetCompactionHist + "-" + ipAddress);
 						dtCompHistStack.Push(dtCompHist);
 						ReadCompactionHistFileParseIntoDataTable((IFilePath)diagFile, ipAddress, dcName, dtCompHist, dtTable, ignoreKeySpaces);
 					}
@@ -286,7 +298,7 @@ void Main()
 						}
 						
 						Console.WriteLine("Processing File \"{0}\"", diagFile.Path);
-						var dtLog = new System.Data.DataTable(excelWorkBookLogCassandra + "-" + ipAddress);
+						var dtLog = new System.Data.DataTable(excelWorkSheetLogCassandra + "-" + ipAddress);
 						DateTime maxLogTimestamp;
 						
 						dtLogsStack.Push(dtLog);
@@ -295,7 +307,7 @@ void Main()
 						if (parseNonLogs && ((LogSummaryPeriods != null && LogSummaryPeriods.Length > 0)
 												|| (LogSummaryPeriodRanges != null && LogSummaryPeriodRanges.Length > 0)))
 						{
-							var dtSummaryLog = new System.Data.DataTable(excelWorkBookLogCassandra + "-" + ipAddress);
+							var dtSummaryLog = new System.Data.DataTable(excelWorkSheetLogCassandra + "-" + ipAddress);
 							bool useMaxTimestamp = LogSummaryPeriods == null || LogSummaryPeriods.Length == 0;
 							var summaryPeriods = useMaxTimestamp ? new Tuple<DateTime,TimeSpan>[LogSummaryPeriodRanges.Length] : LogSummaryPeriods;
 
@@ -425,13 +437,26 @@ void Main()
 			{
 				Console.WriteLine("Warning: DataCenter Name was not found for Path \"{0}\" in the Ring file.", element.Path);
 			}
-	
+
+			if (parseNonLogs)
+			{
+				Console.WriteLine("Processing Files {{{0}}} in directory \"{1}\"",
+									string.Join(", ", osmachineFiles),
+									element.Path);
+									
+				ParseOSMachineInfoDataTable(element,
+											osmachineFiles,
+											ipAddress,
+											dcName,
+											dtOSMachineInfo);
+			}
+
 			if (parseNonLogs && element.Clone().AddChild(nodetoolDir).MakeFile(nodetoolCFStatsFile, out diagFilePath))
 			{
 				if (diagFilePath.Exist())
 				{
 					Console.WriteLine("Processing File \"{0}\"", diagFilePath.Path);
-					var dtCFStats = new System.Data.DataTable(excelWorkBookCFStats + "-" + ipAddress);
+					var dtCFStats = new System.Data.DataTable(excelWorkSheetCFStats + "-" + ipAddress);
 					dtCFStatsStack.Push(dtCFStats);
 					ReadCFStatsFileParseIntoDataTable(diagFilePath, ipAddress, dcName, dtCFStats, ignoreKeySpaces, cfstatsCreateMBColumns);
 				}
@@ -442,7 +467,7 @@ void Main()
 				if (diagFilePath.Exist())
 				{
 					Console.WriteLine("Processing File \"{0}\"", diagFilePath.Path);
-					var dtTPStats = new System.Data.DataTable(excelWorkBookTPStats + "-" + ipAddress);
+					var dtTPStats = new System.Data.DataTable(excelWorkSheetTPStats + "-" + ipAddress);
 					dtTPStatsStack.Push(dtTPStats);
 					ReadTPStatsFileParseIntoDataTable(diagFilePath, ipAddress, dcName, dtTPStats);
 				}
@@ -462,7 +487,7 @@ void Main()
 				if (diagFilePath.Exist())
 				{
 					Console.WriteLine("Processing File \"{0}\"", diagFilePath.Path);
-					var dtHistComp = new System.Data.DataTable(excelWorkBookCompactionHist + "-" + ipAddress);
+					var dtHistComp = new System.Data.DataTable(excelWorkSheetCompactionHist + "-" + ipAddress);
 					dtCompHistStack.Push(dtHistComp);
 					ReadCompactionHistFileParseIntoDataTable(diagFilePath, ipAddress, dcName, dtHistComp, dtTable, ignoreKeySpaces);
 				}
@@ -472,44 +497,51 @@ void Main()
 			{
 				if (diagFilePath.Exist())
 				{
-					Console.WriteLine("Processing File \"{0}\"", diagFilePath.Path);
-					var dtLog = new System.Data.DataTable(excelWorkBookLogCassandra + "-" + ipAddress);
-					DateTime maxLogTimestamp;
-
-					dtLogsStack.Push(dtLog);
-					ReadCassandraLogParseIntoDataTable(diagFilePath, ipAddress, dcName, includeLogEntriesAfterThisTimeFrame, LogMaxRowsPerNode, dtLog, out maxLogTimestamp);
-
-					if (parseNonLogs && ((LogSummaryPeriods != null && LogSummaryPeriods.Length > 0)
-												|| (LogSummaryPeriodRanges != null && LogSummaryPeriodRanges.Length > 0)))
+					var logFilePath = (IFilePath) diagFilePath.Clone();
+					
+					var logTask = Task.Run(() =>
 					{
-						var dtSummaryLog = new System.Data.DataTable(excelWorkBookLogCassandra + "-" + ipAddress);
-						bool useMaxTimestamp = LogSummaryPeriods == null || LogSummaryPeriods.Length == 0;
-						var summaryPeriods = useMaxTimestamp ? new Tuple<DateTime,TimeSpan>[LogSummaryPeriodRanges.Length] : LogSummaryPeriods;
+						Console.WriteLine("Processing File \"{0}\"", logFilePath.Path);
+						var dtLog = new System.Data.DataTable(excelWorkSheetLogCassandra + "-" + ipAddress);
+						DateTime maxLogTimestamp;
 
-						if (useMaxTimestamp)
+						dtLogsStack.Push(dtLog);
+						ReadCassandraLogParseIntoDataTable(logFilePath, ipAddress, dcName, includeLogEntriesAfterThisTimeFrame, LogMaxRowsPerNode, dtLog, out maxLogTimestamp);
+
+						if (parseNonLogs && ((LogSummaryPeriods != null && LogSummaryPeriods.Length > 0)
+													|| (LogSummaryPeriodRanges != null && LogSummaryPeriodRanges.Length > 0)))
 						{
-							var currentRange = maxLogTimestamp.Date.AddDays(1);
+							var dtSummaryLog = new System.Data.DataTable(excelWorkSheetLogCassandra + "-" + ipAddress);
+							bool useMaxTimestamp = LogSummaryPeriods == null || LogSummaryPeriods.Length == 0;
+							var summaryPeriods = useMaxTimestamp ? new Tuple<DateTime, TimeSpan>[LogSummaryPeriodRanges.Length] : LogSummaryPeriods;
 
-							for (int nIndex = 0; nIndex < summaryPeriods.Length; ++nIndex)
+							if (useMaxTimestamp)
 							{
-								summaryPeriods[nIndex] = new Tuple<DateTime,TimeSpan>(currentRange,
-																							LogSummaryPeriodRanges[nIndex].Item2);
+								var currentRange = maxLogTimestamp.Date.AddDays(1);
 
-								currentRange = currentRange - LogSummaryPeriodRanges[nIndex].Item1;
+								for (int nIndex = 0; nIndex < summaryPeriods.Length; ++nIndex)
+								{
+									summaryPeriods[nIndex] = new Tuple<DateTime, TimeSpan>(currentRange,
+																								LogSummaryPeriodRanges[nIndex].Item2);
+
+									currentRange = currentRange - LogSummaryPeriodRanges[nIndex].Item1;
+								}
 							}
-						}
 
-						dtLogSummaryStack.Push(dtSummaryLog);
-						ParseCassandraLogIntoSummaryDataTable(dtLog,
-																dtSummaryLog,
-																ipAddress,
-																dcName,
-																LogSummaryIndicatorType,
-																LogSummaryTaskItems,
-																LogSummaryIgnoreTaskExceptions,
-																summaryPeriods);
-					}
-				}
+							dtLogSummaryStack.Push(dtSummaryLog);
+							ParseCassandraLogIntoSummaryDataTable(dtLog,
+																	dtSummaryLog,
+																	ipAddress,
+																	dcName,
+																	LogSummaryIndicatorType,
+																	LogSummaryTaskItems,
+																	LogSummaryIgnoreTaskExceptions,
+																	summaryPeriods);
+						}
+					});
+					
+					logParsingTasks.Add(logTask);
+                }
 			}
 
 			if (parseNonLogs && element.Clone().AddChild(confCassandraDir).MakeFile(confCassandraFile, out diagFilePath))
@@ -546,7 +578,7 @@ void Main()
 			}
 
 		});
-
+		
 		#endregion
 	}
 
@@ -569,9 +601,12 @@ void Main()
 				
 				dtFilter = string.Format("[Timestamp] >= #{0}#", minMaxLogTimestamp.Date - LogTimeSpanRange);
 			}
+			
+			//Need to wait until all logs are parsed...
+			logParsingTasks.ForEach(task => task.Wait());
 
 			DTLoadIntoDifferentExcelWorkBook(excelFilePath,
-											   excelWorkBookLogCassandra,
+											   excelWorkSheetLogCassandra,
 											   dtLogsStack,
 											   workSheet =>
 												   {
@@ -599,7 +634,7 @@ void Main()
 			if (dtRingInfo.Rows.Count > 0)
 			{
 				DTLoadIntoExcelWorkBook(excelPkg,
-											excelWorkBookRingInfo,
+											excelWorkSheetRingInfo,
 											dtRingInfo,
 											workSheet =>
 											{
@@ -623,7 +658,7 @@ void Main()
 			if (dtTokenRange.Rows.Count > 0)
 			{
 				DTLoadIntoExcelWorkBook(excelPkg,
-										excelWorkBookRingTokenRanges,
+										excelWorkSheetRingTokenRanges,
 										dtTokenRange,
 										workSheet =>
 										{
@@ -639,9 +674,79 @@ void Main()
 										});
 			}
 
+			//OS/Machine Indo
+			if (dtOSMachineInfo.Rows.Count > 0)
+			{
+				DTLoadIntoExcelWorkBook(excelPkg,
+										excelWorkSheetOSMachineInfo,
+										dtOSMachineInfo,
+										workSheet =>
+										{
+											workSheet.Cells["1:2"].Style.Fill.PatternType = OfficeOpenXml.Style.ExcelFillStyle.LightGray;
+											workSheet.Cells["1:2"].Style.HorizontalAlignment = OfficeOpenXml.Style.ExcelHorizontalAlignment.Center;
+											//workBook.Cells["1:1"].Style.Fill.BackgroundColor.SetColor(System.Drawing.Color.LightGray);
+											workSheet.View.FreezePanes(3, 1);
+											
+											workSheet.Cells["H1:K1"].Style.WrapText = true;
+											workSheet.Cells["H1:K1"].Merge = true;
+											workSheet.Cells["H1:K1"].Value = "CPU Load (Percent)";
+											workSheet.Cells["H1:H2"].Style.Border.Left.Style = OfficeOpenXml.Style.ExcelBorderStyle.Medium;
+											workSheet.Cells["K1:K2"].Style.Border.Right.Style = OfficeOpenXml.Style.ExcelBorderStyle.Medium;
+
+											workSheet.Cells["L1:Q1"].Style.WrapText = true;
+											workSheet.Cells["L1:Q1"].Merge = true;
+											workSheet.Cells["L1:Q1"].Value = "Memory (MB)";
+											workSheet.Cells["L1:L2"].Style.Border.Left.Style = OfficeOpenXml.Style.ExcelBorderStyle.Medium;
+											workSheet.Cells["Q1:Q2"].Style.Border.Right.Style = OfficeOpenXml.Style.ExcelBorderStyle.Medium;
+
+											workSheet.Cells["R1:U1"].Style.WrapText = true;
+											workSheet.Cells["R1:U1"].Merge = true;
+											workSheet.Cells["R1:U1"].Value = "Java";
+											workSheet.Cells["R1:R2"].Style.Border.Left.Style = OfficeOpenXml.Style.ExcelBorderStyle.Medium;
+											workSheet.Cells["U1:U2"].Style.Border.Right.Style = OfficeOpenXml.Style.ExcelBorderStyle.Dashed;
+
+											workSheet.Cells["V1:Y1"].Style.WrapText = true;
+											workSheet.Cells["V1:Y1"].Merge = true;
+											workSheet.Cells["V1:Y1"].Value = "Java Non-Heap (MB)";
+											workSheet.Cells["V1:V2"].Style.Border.Left.Style = OfficeOpenXml.Style.ExcelBorderStyle.Dashed;
+											workSheet.Cells["Y1:Y2"].Style.Border.Right.Style = OfficeOpenXml.Style.ExcelBorderStyle.Dashed;
+
+											workSheet.Cells["Z1:AC1"].Style.WrapText = true;
+											workSheet.Cells["Z1:AC1"].Merge = true;
+											workSheet.Cells["Z1:AC1"].Value = "Java Heap (MB)";
+											workSheet.Cells["Z1:Z2"].Style.Border.Left.Style = OfficeOpenXml.Style.ExcelBorderStyle.Dashed;
+											workSheet.Cells["AC1:AC2"].Style.Border.Right.Style = OfficeOpenXml.Style.ExcelBorderStyle.Medium;
+
+											workSheet.Cells["AD1:AK1"].Style.WrapText = true;
+											workSheet.Cells["AD1:AK1"].Merge = true;
+											workSheet.Cells["AD1:AK1"].Value = "NTP";
+											workSheet.Cells["AD1:AD2"].Style.Border.Left.Style = OfficeOpenXml.Style.ExcelBorderStyle.Medium;
+											workSheet.Cells["AK1:AK2"].Style.Border.Right.Style = OfficeOpenXml.Style.ExcelBorderStyle.Medium;
+
+											workSheet.Cells["D:D"].Style.Numberformat.Format = "#,###,###,##0";
+											workSheet.Cells["L:Q"].Style.Numberformat.Format = "#,###,###,##0";
+											workSheet.Cells["AD:AH"].Style.Numberformat.Format = "#,###,###,##0";
+											workSheet.Cells["H:K"].Style.Numberformat.Format = "#,###,###,##0.00";
+											workSheet.Cells["V:V"].Style.Numberformat.Format = "#,###,###,##0.00";
+											workSheet.Cells["W:W"].Style.Numberformat.Format = "#,###,###,##0.00";
+											workSheet.Cells["X:X"].Style.Numberformat.Format = "#,###,###,##0.00";
+											workSheet.Cells["Y:Y"].Style.Numberformat.Format = "#,###,###,##0.00";
+											workSheet.Cells["Z:Z"].Style.Numberformat.Format = "#,###,###,##0.00";
+											workSheet.Cells["AA:AA"].Style.Numberformat.Format = "#,###,###,##0.00";
+											workSheet.Cells["AB:AB"].Style.Numberformat.Format = "#,###,###,##0.00";
+											workSheet.Cells["AC:AC"].Style.Numberformat.Format = "#,###,###,##0.00";
+											workSheet.Cells["AI:AK"].Style.Numberformat.Format = "#,###,###,##0.00";
+											
+											workSheet.Cells["A2:AK2"].AutoFilter = true;
+											workSheet.Cells.AutoFitColumns();
+										},
+										null,
+										"A2");
+			}
+
 			//CFStats
 			DTLoadIntoExcelWorkBook(excelPkg,
-										excelWorkBookCFStats,
+										excelWorkSheetCFStats,
 										dtCFStatsStack,
 										workSheet =>
 										{
@@ -661,7 +766,7 @@ void Main()
 
 			//TPStats
 			DTLoadIntoExcelWorkBook(excelPkg,
-										excelWorkBookTPStats,
+										excelWorkSheetTPStats,
 										dtTPStatsStack,
 										workSheet =>
 										{
@@ -679,7 +784,7 @@ void Main()
 
 			//Compacation History
 			DTLoadIntoExcelWorkBook(excelPkg,
-										excelWorkBookCompactionHist,
+										excelWorkSheetCompactionHist,
 										dtCompHistStack,
 										workSheet =>
 										{
@@ -699,32 +804,11 @@ void Main()
 										},
 										false,
 										-1);
-
-			//Cassandra Log Summary
-			DTLoadIntoExcelWorkBook(excelPkg,
-										excelWorkBookSummaryLogCassandra,
-										dtLogSummaryStack,
-										workSheet =>
-										{
-											workSheet.Cells["1:1"].Style.Fill.PatternType = OfficeOpenXml.Style.ExcelFillStyle.LightGray;
-											workSheet.Cells["1:1"].Style.HorizontalAlignment = OfficeOpenXml.Style.ExcelHorizontalAlignment.Center;
-											//workBook.Cells["1:1"].Style.Fill.BackgroundColor.SetColor(System.Drawing.Color.LightGray);
-											workSheet.Cells["A:A"].Style.Numberformat.Format = "mm/dd/yyyy hh:mm";
-											workSheet.Cells["F:F"].Style.Numberformat.Format = "#,###,###,##0";
-											workSheet.Cells["B:B"].Style.Numberformat.Format = "d hh:mm";
-
-											workSheet.View.FreezePanes(2, 1);
-											workSheet.Cells["A1:H1"].AutoFilter = true;
-											workSheet.Cells.AutoFitColumns();
-										},
-										false,
-										-1);
-
 			//DDL Keyspace
 			if (dtKeySpace.Rows.Count > 0)
 			{
 				DTLoadIntoExcelWorkBook(excelPkg,
-											excelWorkBookDDLKeyspaces,
+											excelWorkSheetDDLKeyspaces,
 											dtKeySpace,
 											workSheet =>
 											{
@@ -741,7 +825,7 @@ void Main()
 			if (dtTable.Rows.Count > 0)
 			{
 				DTLoadIntoExcelWorkBook(excelPkg,
-										excelWorkBookDDLTables,
+										excelWorkSheetDDLTables,
 										dtTable,
 										workSheet =>
 											{
@@ -760,7 +844,7 @@ void Main()
 			if (dtYaml.Rows.Count > 0)
 			{
 				DTLoadIntoExcelWorkBook(excelPkg,
-										excelWorkBookYaml,
+										excelWorkSheetYaml,
 										dtYaml,
 										workSheet =>
 										{
@@ -772,6 +856,29 @@ void Main()
 											workSheet.Cells.AutoFitColumns();
 										});
 			}
+
+			//Cassandra Log Summary
+			//Need to wait until all logs are parsed...
+			logParsingTasks.ForEach(task => task.Wait());
+			DTLoadIntoExcelWorkBook(excelPkg,
+										excelWorkSheetSummaryLogCassandra,
+										dtLogSummaryStack,
+										workSheet =>
+										{
+											workSheet.Cells["1:1"].Style.Fill.PatternType = OfficeOpenXml.Style.ExcelFillStyle.LightGray;
+											workSheet.Cells["1:1"].Style.HorizontalAlignment = OfficeOpenXml.Style.ExcelHorizontalAlignment.Center;
+											//workBook.Cells["1:1"].Style.Fill.BackgroundColor.SetColor(System.Drawing.Color.LightGray);
+											workSheet.Cells["A:A"].Style.Numberformat.Format = "mm/dd/yyyy hh:mm";
+											workSheet.Cells["F:F"].Style.Numberformat.Format = "#,###,###,##0";
+											workSheet.Cells["B:B"].Style.Numberformat.Format = "d hh:mm";
+
+											workSheet.View.FreezePanes(2, 1);
+											workSheet.Cells["A1:H1"].AutoFilter = true;
+											workSheet.Cells.AutoFitColumns();
+										},
+										false,
+										-1);
+
 
 			excelPkg.Save();
 		} //Save non-log data
@@ -839,7 +946,8 @@ ExcelRangeBase DTLoadIntoExcelWorkBook(ExcelPackage excelPkg,
 											string workSheetName,
 											System.Data.DataTable dtExcel,
 											Action<ExcelWorksheet> worksheetAction = null,
-											string filterView = null)
+											string filterView = null,
+											string startingWSCell = "A1")
 {
 	dtExcel.AcceptChanges();
 
@@ -871,14 +979,14 @@ ExcelRangeBase DTLoadIntoExcelWorkBook(ExcelPackage excelPkg,
 
 	if (string.IsNullOrEmpty(filterView))
 	{
-		Console.WriteLine("Loading DataTable \"{0}\" into Excel WorkBook \"{1}\". Rows: {2:###,###,##0}", dtExcel.TableName, workSheet.Name, dtExcel.Rows.Count);
+		Console.WriteLine("Loading DataTable \"{0}\" into Excel WorkSheet \"{1}\". Rows: {2:###,###,##0}", dtExcel.TableName, workSheet.Name, dtExcel.Rows.Count);
 	}
 	else
 	{
-		Console.WriteLine("Loading DataTable \"{0}\" into Excel WorkBook \"{1}\" with Filter \"{2}\". Rows: {3:###,###,##0}", dtExcel.TableName, workSheet.Name, filterView, dtExcel.Rows.Count);
+		Console.WriteLine("Loading DataTable \"{0}\" into Excel WorkSheet \"{1}\" with Filter \"{2}\". Rows: {3:###,###,##0}", dtExcel.TableName, workSheet.Name, filterView, dtExcel.Rows.Count);
 	}
 	
-	var loadRange = workSheet.Cells["A1"].LoadFromDataTable(dtExcel, true);
+	var loadRange = workSheet.Cells[startingWSCell].LoadFromDataTable(dtExcel, true);
 
 	if (loadRange != null && worksheetAction != null)
 	{
@@ -894,21 +1002,22 @@ ExcelRangeBase DTLoadIntoExcelWorkBook(ExcelPackage excelPkg,
 											Action<ExcelWorksheet> worksheetAction = null,
 											bool enableMaxRowLimitPerWorkSheet = true,
 											int maxRowInExcelWorkSheet = MaxRowInExcelWorkSheet,
-											string filterView = null)
+											string filterView = null,
+											string startingWSCell = "A1")
 {
 	var orginalWSName = workSheetName;
-	var workBook = excelPkg.Workbook.Worksheets[workSheetName];
-	if (workBook == null)
+	var workSheet = excelPkg.Workbook.Worksheets[workSheetName];
+	if (workSheet == null)
 	{
-		workBook = excelPkg.Workbook.Worksheets.Add(workSheetName);
+		workSheet = excelPkg.Workbook.Worksheets.Add(workSheetName);
 	}
 	else
 	{
-		workBook.Cells.Clear();
+		workSheet.Cells.Clear();
 	}
 
 	System.Data.DataTable dtExcel;
-	ExcelRangeBase rangeLoadAt = workBook.Cells["A1"];
+	ExcelRangeBase rangeLoadAt = workSheet.Cells[startingWSCell];
 	ExcelRangeBase loadRange = null;
 	bool printHdrs = true;
 	DataRow[] dtErrors;
@@ -944,22 +1053,22 @@ ExcelRangeBase DTLoadIntoExcelWorkBook(ExcelPackage excelPkg,
 
 			if (worksheetAction != null)
 			{
-				worksheetAction(workBook);
+				worksheetAction(workSheet);
 			}
 
 			workSheetName = string.Format("{0}-{1:000}", orginalWSName, wsCount);
-			workBook = excelPkg.Workbook.Worksheets[workSheetName];
-			if (workBook == null)
+			workSheet = excelPkg.Workbook.Worksheets[workSheetName];
+			if (workSheet == null)
 			{
-				workBook = excelPkg.Workbook.Worksheets.Add(workSheetName);
+				workSheet = excelPkg.Workbook.Worksheets.Add(workSheetName);
 			}
 			else
 			{
-				workBook.Cells.Clear();
+				workSheet.Cells.Clear();
 			}
 
 			printHdrs = true;
-			rangeLoadAt = workBook.Cells["A1"];
+			rangeLoadAt = workSheet.Cells[startingWSCell];
 			totalRows = 0;
 		}
 
@@ -967,17 +1076,17 @@ ExcelRangeBase DTLoadIntoExcelWorkBook(ExcelPackage excelPkg,
 
 		if (string.IsNullOrEmpty(filterView))
 		{
-			Console.WriteLine("Loaded DataTable \"{0}\" into Excel WorkBook \"{1}\" in Range {2}. Rows: {3:###,###,##0}",
+			Console.WriteLine("Loaded DataTable \"{0}\" into Excel WorkSheet \"{1}\" in Range {2}. Rows: {3:###,###,##0}",
 								dtExcel.TableName,
-								workBook.Name,
+								workSheet.Name,
 								loadRange == null ? "<Empty>" : loadRange.Address,
 								dtExcel.Rows.Count);
 		}
 		else
 		{
-			Console.WriteLine("Loaded DataTable \"{0}\" into Excel WorkBook \"{1}\" with Filter \"{2}\" in Range {3}. Rows: {4:###,###,##0}",
+			Console.WriteLine("Loaded DataTable \"{0}\" into Excel WorkSheet \"{1}\" with Filter \"{2}\" in Range {3}. Rows: {4:###,###,##0}",
 								dtExcel.TableName,
-								workBook.Name,
+								workSheet.Name,
 								filterView,
 								loadRange == null ? "<Empty>" : loadRange.Address,
 								dtExcel.Rows.Count);
@@ -986,14 +1095,14 @@ ExcelRangeBase DTLoadIntoExcelWorkBook(ExcelPackage excelPkg,
 		if (loadRange != null)
 		{
 			printHdrs = false;
-			rangeLoadAt = workBook.Cells["A" + (loadRange.End.Row + 1)];
+			rangeLoadAt = workSheet.Cells[startingWSCell[0].ToString() + (loadRange.End.Row + 1)];
 			totalRows += dtExcel.Rows.Count;
 		}
 	}
 
 	if (worksheetAction != null && totalRows > 0)
 	{
-		worksheetAction(workBook);
+		worksheetAction(workSheet);
 	}
 
 	return loadRange;
@@ -1005,11 +1114,11 @@ int DTLoadIntoDifferentExcelWorkBook(string excelFilePath,
 											Action<ExcelWorksheet> worksheetAction = null,
 											int maxRowInExcelWorkBook = MaxRowInExcelWorkBook,
 											int maxRowInExcelWorkSheet = MaxRowInExcelWorkSheet,
-											string filterView = null)
+											string filterView = null,
+											string startingWSCell = "A1")
 {
 	DataTable dtExcel;
-	ExcelWorksheet workBook;
-	int wsCount = 1;
+	int wsCount = 0;
 	int totalRows = 0;
 	var excelTargetFile = Common.Path.PathUtils.BuildFilePath(excelFilePath);
 	var stackGroups = new List<Common.Patterns.Collections.LockFree.Stack<System.Data.DataTable>>();
@@ -1041,7 +1150,7 @@ int DTLoadIntoDifferentExcelWorkBook(string excelFilePath,
 	Parallel.ForEach(stackGroups, stack =>
 	//foreach (var stack in stackGroups)
 	{
-		var excelFile = excelTargetFile.ApplyFileNameFormat(new object[] { workSheetName, wsCount}).FileInfo();
+		var excelFile = excelTargetFile.ApplyFileNameFormat(new object[] { workSheetName, wsCount++}).FileInfo();
 		
 		using (var excelPkg = new ExcelPackage(excelFile))
 		{
@@ -1051,11 +1160,11 @@ int DTLoadIntoDifferentExcelWorkBook(string excelFilePath,
 										worksheetAction,
 										maxRowInExcelWorkSheet > 0,
 										maxRowInExcelWorkSheet,
-										filterView);
-
-			workBook = excelPkg.Workbook.Worksheets[workSheetName];
-			
+										filterView,
+										startingWSCell);
+										
 			excelPkg.Save();
+			Console.WriteLine("*** Excel WorkBooks saved to \"{0}\"", excelFile.FullName);
 		}
 	});
 
@@ -3074,6 +3183,209 @@ void ParseCassandraLogIntoSummaryDataTable(DataTable dtroCLog,
 	}
 }
 
+void ParseOSMachineInfoDataTable(IDirectoryPath directoryPath,
+									string[] osmachineFiles,									
+									string ipAddress,
+									string dcName,
+									DataTable dtOSMachineInfo)
+{
+	if (dtOSMachineInfo.Columns.Count == 0)
+	{
+		dtOSMachineInfo.Columns.Add("Node IPAdress", typeof(string)).Unique = true;
+		dtOSMachineInfo.PrimaryKey = new System.Data.DataColumn[] { dtOSMachineInfo.Columns["Node IPAdress"] };
+		dtOSMachineInfo.Columns.Add("DataCenter", typeof(string)).AllowDBNull = true;
+		
+		dtOSMachineInfo.Columns.Add("CPU Architecture", typeof(string));
+		dtOSMachineInfo.Columns.Add("Physical Memory (MB)", typeof(int));
+		dtOSMachineInfo.Columns.Add("OS", typeof(string));
+		dtOSMachineInfo.Columns.Add("OS Version", typeof(string));
+		dtOSMachineInfo.Columns.Add("TimeZone", typeof(string));
+		//CPU Load
+		dtOSMachineInfo.Columns.Add("Average", typeof(decimal)); //h
+		dtOSMachineInfo.Columns.Add("Idle", typeof(decimal));
+		dtOSMachineInfo.Columns.Add("System", typeof(decimal));
+		dtOSMachineInfo.Columns.Add("User", typeof(decimal)); //k
+		//Memory
+		dtOSMachineInfo.Columns.Add("Available", typeof(int)); //l
+		dtOSMachineInfo.Columns.Add("Cache", typeof(int));
+		dtOSMachineInfo.Columns.Add("Buffers", typeof(int));
+		dtOSMachineInfo.Columns.Add("Shared", typeof(int));
+		dtOSMachineInfo.Columns.Add("Free", typeof(int));
+		dtOSMachineInfo.Columns.Add("Used", typeof(int)); //q
+		//Java
+		dtOSMachineInfo.Columns.Add("Vendor", typeof(string));//r
+		dtOSMachineInfo.Columns.Add("Model", typeof(string));
+		dtOSMachineInfo.Columns.Add("Runtime Name", typeof(string));
+		dtOSMachineInfo.Columns.Add("Runtime Version", typeof(string));//u
+		//Java NonHeapMemoryUsage
+		dtOSMachineInfo.Columns.Add("Non-Heap Committed", typeof(decimal)); //v
+		dtOSMachineInfo.Columns.Add("Non-Heap Init", typeof(decimal));
+		dtOSMachineInfo.Columns.Add("Non-Heap Max", typeof(decimal));
+		dtOSMachineInfo.Columns.Add("Non-Heap Used", typeof(decimal));//y
+		//Javaa HeapMemoryUsage
+		dtOSMachineInfo.Columns.Add("Heap Committed", typeof(decimal)); //z
+		dtOSMachineInfo.Columns.Add("Heap Init", typeof(decimal)); //aa
+		dtOSMachineInfo.Columns.Add("Heap Max", typeof(decimal)); //ab
+		dtOSMachineInfo.Columns.Add("Heap Used", typeof(decimal)); //ac
+
+		//NTP
+		dtOSMachineInfo.Columns.Add("Correction (ms)", typeof(int)); //ad
+		dtOSMachineInfo.Columns.Add("Polling (secs)", typeof(int));
+		dtOSMachineInfo.Columns.Add("Maximum Error (us)", typeof(int));
+		dtOSMachineInfo.Columns.Add("Estimated Error (us)", typeof(int));
+		dtOSMachineInfo.Columns.Add("Time Constant", typeof(int)); //ah
+		dtOSMachineInfo.Columns.Add("Precision (us)", typeof(decimal)); //ai
+		dtOSMachineInfo.Columns.Add("Frequency (ppm)", typeof(decimal));
+		dtOSMachineInfo.Columns.Add("Tolerance (ppm)", typeof(decimal)); //ak
+	}
+
+	var dataRow = dtOSMachineInfo.NewRow();
+
+	dataRow["Node IPAdress"] = ipAddress;
+	dataRow["DataCenter"] = dcName;
+	
+	foreach (var fileName in osmachineFiles)
+	{
+		IFilePath filePath;
+
+		if (directoryPath.Clone().MakeFile(fileName, out filePath))
+		{
+			if (filePath.Exist())
+			{
+				if (fileName.Contains("machine-info"))
+				{
+					var infoObject = ParseJson(filePath.ReadAllText());
+					
+					dataRow["CPU Architecture"] = infoObject["arch"];
+					dataRow["Physical Memory (MB)"] = infoObject["memory"];
+				}
+				else if (fileName.Contains("os-info"))
+				{
+					var infoObject = ParseJson(filePath.ReadAllText());
+					
+					dataRow["OS"] = infoObject["sub_os"];
+					dataRow["OS Version"] = infoObject["os_version"];
+				}
+				else if (fileName.Contains("cpu"))
+				{
+					var infoObject = ParseJson(filePath.ReadAllText());
+					
+					dataRow["Idle"] = infoObject["%idle"];
+					dataRow["System"] = infoObject["%system"];
+					dataRow["User"] = infoObject["%user"];
+				}
+				else if (fileName.Contains("load_avg"))
+				{
+					dataRow["Average"] = decimal.Parse(filePath.ReadAllText());
+				}
+				else if (fileName.Contains("memory"))
+				{
+					var infoObject = ParseJson(filePath.ReadAllText());
+					
+					dataRow["Available"] = infoObject["available"];
+					dataRow["Cache"] = infoObject["cache"];
+					dataRow["Buffers"] = infoObject["buffers"];
+					dataRow["Shared"] = infoObject["shared"];
+					dataRow["Free"] = infoObject["free"];
+					dataRow["Used"] = infoObject["used"];
+				}
+				else if (fileName.Contains("java_system_properties"))
+				{
+					var infoObject = ParseJson(filePath.ReadAllText());
+					
+					dataRow["Vendor"] = infoObject["java.vendor"];
+					dataRow["Model"] = infoObject["sun.arch.data.model"];
+					dataRow["Runtime Name"] = infoObject["java.runtime.name"];
+					dataRow["Runtime Version"] = infoObject["java.runtime.version"];
+					dataRow["TimeZone"] = ((string)infoObject["user.timezone"])
+											.Replace((string) infoObject["file.separator"], "/");
+				}
+				else if (fileName.Contains("java_heap"))
+				{
+					var infoObject = ParseJson(filePath.ReadAllText());
+					var nonHeapJson = ParseJson((string) infoObject["NonHeapMemoryUsage"]);
+					var heapJson = ParseJson((string) infoObject["HeapMemoryUsage"]);
+					
+					//Java NonHeapMemoryUsage
+					dataRow["Non-Heap Committed"] = ((dynamic) (nonHeapJson["committed"])) / BytesToMB;
+					dataRow["Non-Heap Init"] = ((dynamic) (nonHeapJson["init"])) / BytesToMB;
+					dataRow["Non-Heap Max"] = ((dynamic) (nonHeapJson["max"])) / BytesToMB;
+					dataRow["Non-Heap Used"] = ((dynamic) (nonHeapJson["used"])) / BytesToMB;
+					//Javaa HeapMemoryUsage
+					dataRow["Heap Committed"] = ((dynamic) (heapJson["committed"])) / BytesToMB;
+					dataRow["Heap Init"] = ((dynamic) (heapJson["init"])) / BytesToMB;
+					dataRow["Heap Max"] = ((dynamic) (heapJson["max"])) / BytesToMB;
+					dataRow["Heap Used"] = ((dynamic) (heapJson["used"])) / BytesToMB;
+				}
+				else if (fileName.Contains("ntpstat"))
+				{
+					var fileText = filePath.ReadAllText();
+					var words = StringFunctions.Split(fileText,
+														' ',
+														StringFunctions.IgnoreWithinDelimiterFlag.Text,
+														StringFunctions.SplitBehaviorOptions.RemoveEmptyEntries | Common.StringFunctions.SplitBehaviorOptions.StringTrimEachElement);
+					for(int nIndex = 0; nIndex < words.Count; ++nIndex)
+					{
+						var element = words[nIndex];
+						
+						if (element == "within")
+						{
+							dataRow["Correction (ms)"] = DetermineTime(words[++nIndex]);
+						}
+						else if (element == "every")
+						{
+							dataRow["Polling (secs)"] = DetermineTime(words[++nIndex]);
+						}
+					}
+				}
+				else if(fileName.Contains("ntptime"))
+				{
+					var fileText = filePath.ReadAllText();
+					var words = StringFunctions.Split(fileText,
+														' ',
+														StringFunctions.IgnoreWithinDelimiterFlag.Text,
+														StringFunctions.SplitBehaviorOptions.RemoveEmptyEntries | Common.StringFunctions.SplitBehaviorOptions.StringTrimEachElement);
+					for (int nIndex = 0; nIndex < words.Count; ++nIndex)
+					{
+						var element = words[nIndex];
+
+						if (element == "maximum")
+						{
+							dataRow["Maximum Error (us)"] = DetermineTime(words[nIndex += 2]);
+						}
+						else if (element == "estimated")
+						{
+							dataRow["Estimated Error (us)"] = DetermineTime(words[nIndex += 2]);
+						}
+						else if (element == "constant")
+						{
+							dataRow["Time Constant"] = DetermineTime(words[++nIndex]);
+						}
+						else if (element == "precision")
+						{
+							dataRow["Precision (us)"] = DetermineTime(words[++nIndex]);
+						}
+						else if (element == "frequency")
+						{
+							dataRow["Frequency (ppm)"] = DetermineTime(words[++nIndex]);
+						}
+						else if (element == "tolerance")
+						{
+							dataRow["Tolerance (ppm)"] = DetermineTime(words[++nIndex]);
+						}
+					}
+				}
+			}
+		}
+	}
+
+	lock (dtOSMachineInfo)
+	{
+		dtOSMachineInfo.Rows.Add(dataRow);
+	}
+}
+
+
 
 #endregion
 
@@ -3083,11 +3395,11 @@ bool LookForIPAddress(string value, string ignoreIPAddress, out string ipAddress
 {
 
 	if (string.IsNullOrEmpty(value))
-    {
+	{
 		ipAddress = null;
 		return false;
 	}
-	
+
 	if (value[0] == '/')
 	{
 		string strIP;
@@ -3305,7 +3617,7 @@ string DetermineProperFormat(string strValue, bool ignoreBraces = false, bool re
 	{
 		return strValue;
 	}
-	
+
 	strValue = strValue.Trim();
 
 	if (strValue == string.Empty)
@@ -3315,7 +3627,7 @@ string DetermineProperFormat(string strValue, bool ignoreBraces = false, bool re
 
 	if (strValue[0] == '"')
 	{
-		var splitItems = strValue.Substring(1,strValue.Length - 2).Split(',');
+		var splitItems = strValue.Substring(1, strValue.Length - 2).Split(',');
 		var fmtItems = splitItems.Select(i => DetermineProperFormat(i, true)).Sort();
 		return string.Join(", ", fmtItems);
 	}
@@ -3331,7 +3643,7 @@ string DetermineProperFormat(string strValue, bool ignoreBraces = false, bool re
 			strValue = strValue.Substring(0, strValue.Length - 1);
 		}
 	}
-	
+
 	strValue = RemoveQuotes(strValue);
 
 	if (IPAddressStr(strValue, out strValueA))
@@ -3343,7 +3655,58 @@ string DetermineProperFormat(string strValue, bool ignoreBraces = false, bool re
 	{
 		return item.ToString();
 	}
-	
+
+	return removeNamespace ? RemoveNamespace(strValue) : strValue;
+}
+
+object DetermineProperObjectFormat(string strValue, bool ignoreBraces = false, bool removeNamespace = true)
+{
+	string strValueA;
+	object item;
+
+	if (string.IsNullOrEmpty(strValue))
+	{
+		return strValue;
+	}
+
+	strValue = strValue.Trim();
+
+	if (strValue == string.Empty)
+	{
+		return strValue;
+	}
+
+	if (strValue[0] == '"')
+	{
+		var splitItems = strValue.Substring(1, strValue.Length - 2).Split(',');
+		var fmtItems = splitItems.Select(i => DetermineProperFormat(i, true)).Sort();
+		return string.Join(", ", fmtItems);
+	}
+
+	if (!ignoreBraces)
+	{
+		if (strValue[0] == '{')
+		{
+			strValue = strValue.Substring(1);
+		}
+		if (strValue[strValue.Length - 1] == '}')
+		{
+			strValue = strValue.Substring(0, strValue.Length - 1);
+		}
+	}
+
+	strValue = RemoveQuotes(strValue);
+
+	if (IPAddressStr(strValue, out strValueA))
+	{
+		return strValueA;
+	}
+
+	if (StringFunctions.ParseIntoNumeric(strValue, out item))
+	{
+		return item;
+	}
+
 	return removeNamespace ? RemoveNamespace(strValue) : strValue;
 }
 
@@ -3375,6 +3738,31 @@ object DetermineTime(string strTime)
 	}
 	
 	return strTime;
+}
+
+Dictionary<string, object> ParseJson(string strJson)
+{
+	strJson = strJson.Trim();
+
+	if (strJson[0] == '{')
+	{
+		strJson = strJson.Substring(1, strJson.Length - 2);
+	}
+
+	var keyValuePair = StringFunctions.Split(strJson,
+												new char[] { ':', ','},
+												StringFunctions.IgnoreWithinDelimiterFlag.Text | Common.StringFunctions.IgnoreWithinDelimiterFlag.Brace,
+												StringFunctions.SplitBehaviorOptions.RemoveEmptyEntries | Common.StringFunctions.SplitBehaviorOptions.StringTrimEachElement);
+												
+	var jsonDict = new Dictionary<string, object>();
+
+	for (int nIndex = 0; nIndex < keyValuePair.Count; ++nIndex)
+	{
+		jsonDict.Add(RemoveQuotes(keyValuePair[nIndex].Trim()).Trim(),
+						DetermineProperObjectFormat(RemoveQuotes(keyValuePair[++nIndex]), true, false));
+	}
+	
+	return jsonDict;
 }
 
 #endregion
