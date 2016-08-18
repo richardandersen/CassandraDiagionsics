@@ -68,7 +68,8 @@ void Main()
 {
 	#region Configuration
 	//Location where this application will write or update the Excel file.
-	var excelFilePath = @"[DeskTop]\Gamesys.xlsx"; //<==== Should be updated
+	//var excelFilePath = @"[DeskTop]\Gamesys.xlsx"; //<==== Should be updated
+	var excelFilePath = @"[DeskTop]\Test.xlsx";
 	
 	//If diagnosticNoSubFolders is false:
 	//Directory where files are located to parse DSE diagnostics files produced by DataStax OpsCenter diagnostics or a special directory structure where DSE diagnostics information is placed.
@@ -89,7 +90,9 @@ void Main()
 	//If diagnosticNoSubFolders is ture:
 	//	All diagnostic files are located directly under diagnosticPath folder. Each file should have the IP Adress either in the beginning or end of the file name.
 	//		e.g., cfstats_10.192.40.7, system-10.192.40.7.log, 10.192.40.7_system.log, etc.
-	var diagnosticPath = @"[MyDocuments]\LINQPad Queries\DataStax\TestData\gamingactivity-diagnostics-2016_08_10_08_45_40_UTC"; //production_group_v_1-diagnostics-2016_07_04_15_43_48_UTC"; //@"C:\Users\richard\Desktop\datastax"; //<==== Should be Updated 
+	//var diagnosticPath = @"[MyDocuments]\LINQPad Queries\DataStax\TestData\gamingactivity-diagnostics-2016_08_10_08_45_40_UTC";
+	var diagnosticPath = @"[MyDocuments]\LINQPad Queries\DataStax\TestData\production_group_v_1-diagnostics-2016_07_04_15_43_48_UTC"; 
+	//@"C:\Users\richard\Desktop\datastax"; 
 	var diagnosticNoSubFolders = false; //<==== Should be Updated 
 	var parseLogs = true;
 	var parseNonLogs = true;
@@ -106,6 +109,7 @@ void Main()
 	var excelWorkSheetYaml = "Settings-Yamls";
 	var excelWorkSheetOSMachineInfo= "OS-Machine Info";
 	var excelWorkSheetSummaryLogCassandra = "Cassandra Summary Logs";
+	var excelWorkSheetStatusLogCassandra = "Cassandra Status Logs";
 
 	List<string> ignoreKeySpaces = new List<string>() { "dse_system", "system_auth", "system_traces", "system", "dse_perf"  }; //MUST BE IN LOWER CASe
 	List<string> cfstatsCreateMBColumns = new List<string>() { "memory used", "bytes", "space used", "data size"}; //MUST BE IN LOWER CASE -- CFStats attributes that contains these phrases/words will convert their values from bytes to MB in a separate Excel Column
@@ -161,6 +165,7 @@ void Main()
 	var dtTPStatsStack = new Common.Patterns.Collections.LockFree.Stack<System.Data.DataTable>();
 	var dtLogsStack = new Common.Patterns.Collections.LockFree.Stack<System.Data.DataTable>();
 	var dtLogSummaryStack = new Common.Patterns.Collections.LockFree.Stack<System.Data.DataTable>();
+	var dtLogStatusStack = new Common.Patterns.Collections.LockFree.Stack<System.Data.DataTable>();
 	var dtCompHistStack = new Common.Patterns.Collections.LockFree.Stack<System.Data.DataTable>();
 	var listCYamlStack = new Common.Patterns.Collections.LockFree.Stack<List<YamlInfo>>();
 	var dtYaml = new System.Data.DataTable(excelWorkSheetYaml);
@@ -183,6 +188,8 @@ void Main()
 
 	var diagPath = Common.Path.PathUtils.BuildDirectoryPath(diagnosticPath);
 	var logParsingTasks = new Common.Patterns.Collections.ThreadSafe.List<Task>();
+	var logSummaryParsingTasks = new Common.Patterns.Collections.ThreadSafe.List<Task>();
+	var logStatusParsingTasks = new Common.Patterns.Collections.ThreadSafe.List<Task>();
 
 	if (diagnosticNoSubFolders)
 	{
@@ -307,34 +314,50 @@ void Main()
 						if (parseNonLogs && ((LogSummaryPeriods != null && LogSummaryPeriods.Length > 0)
 												|| (LogSummaryPeriodRanges != null && LogSummaryPeriodRanges.Length > 0)))
 						{
-							var dtSummaryLog = new System.Data.DataTable(excelWorkSheetLogCassandra + "-" + ipAddress);
-							bool useMaxTimestamp = LogSummaryPeriods == null || LogSummaryPeriods.Length == 0;
-							var summaryPeriods = useMaxTimestamp ? new Tuple<DateTime,TimeSpan>[LogSummaryPeriodRanges.Length] : LogSummaryPeriods;
-
-							if (useMaxTimestamp)
+							var summaryTask = Task.Run(() =>
 							{
-								var currentRange = maxLogTimestamp.Date.AddDays(1);
+								var dtSummaryLog = new System.Data.DataTable(excelWorkSheetLogCassandra + "-" + ipAddress);
+								bool useMaxTimestamp = LogSummaryPeriods == null || LogSummaryPeriods.Length == 0;
+								var summaryPeriods = useMaxTimestamp ? new Tuple<DateTime, TimeSpan>[LogSummaryPeriodRanges.Length] : LogSummaryPeriods;
 
-								for (int nIndex = 0; nIndex < summaryPeriods.Length; ++nIndex)
+								if (useMaxTimestamp)
 								{
-									summaryPeriods[nIndex] = new Tuple<DateTime,TimeSpan>(currentRange,
-																							LogSummaryPeriodRanges[nIndex].Item2);
-																							
-									currentRange = currentRange - LogSummaryPeriodRanges[nIndex].Item1;
-								}								
-							}
-														
-							dtLogSummaryStack.Push(dtSummaryLog);
-							ParseCassandraLogIntoSummaryDataTable(dtLog,
-																	dtSummaryLog,
+									var currentRange = maxLogTimestamp.Date.AddDays(1);
+
+									for (int nIndex = 0; nIndex < summaryPeriods.Length; ++nIndex)
+									{
+										summaryPeriods[nIndex] = new Tuple<DateTime, TimeSpan>(currentRange,
+																								LogSummaryPeriodRanges[nIndex].Item2);
+
+										currentRange = currentRange - LogSummaryPeriodRanges[nIndex].Item1;
+									}
+								}
+
+								dtLogSummaryStack.Push(dtSummaryLog);
+								ParseCassandraLogIntoSummaryDataTable(dtLog,
+																		dtSummaryLog,
+																		ipAddress,
+																		dcName,
+																		LogSummaryIndicatorType,
+																		LogSummaryTaskItems,
+																		LogSummaryIgnoreTaskExceptions,
+																		summaryPeriods);
+							});
+							logSummaryParsingTasks.Add(summaryTask);
+						}
+
+						var statusTask = Task.Run(() =>
+						{
+							var dtStatusLog = new System.Data.DataTable(excelWorkSheetStatusLogCassandra + "-" + ipAddress);
+							dtLogStatusStack.Push(dtStatusLog);
+							ParseCassandraLogIntoStatusLogDataTable(dtLog,
+																	dtStatusLog,
 																	ipAddress,
 																	dcName,
-																	LogSummaryIndicatorType,
-																	LogSummaryTaskItems,
-																	LogSummaryIgnoreTaskExceptions,
-																	summaryPeriods);
-						}
-                    }
+																	ignoreKeySpaces);
+						});
+						logStatusParsingTasks.Add(statusTask);
+					}
 					else if (parseNonLogs && diagFile.Name.Contains(confCassandraYamlFileName))
 					{
 						if (string.IsNullOrEmpty(dcName))
@@ -511,34 +534,50 @@ void Main()
 						if (parseNonLogs && ((LogSummaryPeriods != null && LogSummaryPeriods.Length > 0)
 													|| (LogSummaryPeriodRanges != null && LogSummaryPeriodRanges.Length > 0)))
 						{
-							var dtSummaryLog = new System.Data.DataTable(excelWorkSheetLogCassandra + "-" + ipAddress);
-							bool useMaxTimestamp = LogSummaryPeriods == null || LogSummaryPeriods.Length == 0;
-							var summaryPeriods = useMaxTimestamp ? new Tuple<DateTime, TimeSpan>[LogSummaryPeriodRanges.Length] : LogSummaryPeriods;
-
-							if (useMaxTimestamp)
+							var summaryTask = Task.Run(() =>
 							{
-								var currentRange = maxLogTimestamp.Date.AddDays(1);
+								var dtSummaryLog = new System.Data.DataTable(excelWorkSheetLogCassandra + "-" + ipAddress);
+								bool useMaxTimestamp = LogSummaryPeriods == null || LogSummaryPeriods.Length == 0;
+								var summaryPeriods = useMaxTimestamp ? new Tuple<DateTime, TimeSpan>[LogSummaryPeriodRanges.Length] : LogSummaryPeriods;
 
-								for (int nIndex = 0; nIndex < summaryPeriods.Length; ++nIndex)
+								if (useMaxTimestamp)
 								{
-									summaryPeriods[nIndex] = new Tuple<DateTime, TimeSpan>(currentRange,
-																								LogSummaryPeriodRanges[nIndex].Item2);
+									var currentRange = maxLogTimestamp.Date.AddDays(1);
 
-									currentRange = currentRange - LogSummaryPeriodRanges[nIndex].Item1;
+									for (int nIndex = 0; nIndex < summaryPeriods.Length; ++nIndex)
+									{
+										summaryPeriods[nIndex] = new Tuple<DateTime, TimeSpan>(currentRange,
+																									LogSummaryPeriodRanges[nIndex].Item2);
+
+										currentRange = currentRange - LogSummaryPeriodRanges[nIndex].Item1;
+									}
 								}
-							}
 
-							dtLogSummaryStack.Push(dtSummaryLog);
-							ParseCassandraLogIntoSummaryDataTable(dtLog,
-																	dtSummaryLog,
+								dtLogSummaryStack.Push(dtSummaryLog);
+								ParseCassandraLogIntoSummaryDataTable(dtLog,
+																		dtSummaryLog,
+																		ipAddress,
+																		dcName,
+																		LogSummaryIndicatorType,
+																		LogSummaryTaskItems,
+																		LogSummaryIgnoreTaskExceptions,
+																		summaryPeriods);
+							});
+							logSummaryParsingTasks.Add(summaryTask);
+						}
+
+						var statusTask = Task.Run(() =>
+						{
+							var dtStatusLog = new System.Data.DataTable(excelWorkSheetStatusLogCassandra + "-" + ipAddress);
+							dtLogStatusStack.Push(dtStatusLog);
+							ParseCassandraLogIntoStatusLogDataTable(dtLog,
+																	dtStatusLog,
 																	ipAddress,
 																	dcName,
-																	LogSummaryIndicatorType,
-																	LogSummaryTaskItems,
-																	LogSummaryIgnoreTaskExceptions,
-																	summaryPeriods);
-						}
-					});
+																	ignoreKeySpaces);
+						});
+						logStatusParsingTasks.Add(statusTask);
+                    });
 					
 					logParsingTasks.Add(logTask);
                 }
@@ -591,7 +630,7 @@ void Main()
 	//Cassandra Log (usually runs longer)
 	var runLogToExcel = Task.Run(() =>
 	{
-		if (LoadLogsIntoExcel)
+		if (LoadLogsIntoExcel && parseLogs)
 		{
 			var dtFilter = LogExcelWorkbookFilter;
 
@@ -620,8 +659,47 @@ void Main()
 												   },
 												   MaxRowInExcelWorkBook,
 												   MaxRowInExcelWorkSheet,
-												   dtFilter);
+												   new Tuple<string,string,DataViewRowState>(dtFilter,
+												   												"[Data Center], [Timestamp] DESC",
+																								DataViewRowState.CurrentRows));
 		}
+	});
+
+	var runStatusLogToExcel = Task.Run(() =>
+	{
+		if (LoadLogsIntoExcel && parseLogs)
+		{
+			//Need to wait until all logs are parsed...
+			logParsingTasks.ForEach(task => task.Wait());
+			logStatusParsingTasks.ForEach(task => task.Wait());
+			
+			DTLoadIntoDifferentExcelWorkBook(excelFilePath,
+											   excelWorkSheetStatusLogCassandra,
+											   dtLogStatusStack,
+											   workSheet =>
+												   {
+														workSheet.Cells["1:1"].Style.Fill.PatternType = OfficeOpenXml.Style.ExcelFillStyle.LightGray;
+													  	 workSheet.Cells["1:1"].Style.HorizontalAlignment = OfficeOpenXml.Style.ExcelHorizontalAlignment.Center;
+													   	//workSheet.Cells["1:1"].Style.Fill.BackgroundColor.SetColor(System.Drawing.Color.LightGray);
+													  	workSheet.View.FreezePanes(2, 1);													   
+													   	workSheet.Cells["A:A"].Style.Numberformat.Format = "mm/dd/yyyy hh:mm:ss";
+														workSheet.Cells["G:G"].Style.Numberformat.Format = "#,###,###,##0";
+														workSheet.Cells["N:R"].Style.Numberformat.Format = "#,###,###,##0";
+														workSheet.Cells["V:V"].Style.Numberformat.Format = "#,###,###,##0";														
+														workSheet.Cells["H:M"].Style.Numberformat.Format = "#,###,###,##0.00";
+														workSheet.Cells["S:T"].Style.Numberformat.Format = "#,###,###,##0.00";
+														workSheet.Cells["Y:Y"].Style.Numberformat.Format = "#,###,###,##0.00";
+														workSheet.Cells["W:W"].Style.Numberformat.Format = "#,###,###,##0.00";
+														workSheet.Cells["A1:W1"].AutoFilter = true;
+													   	workSheet.Cells.AutoFitColumns();														
+												   },
+												   MaxRowInExcelWorkBook,
+												   MaxRowInExcelWorkSheet,
+												   new Tuple<string, string, DataViewRowState>(null,
+												   												"[Data Center], [Timestamp] DESC",
+																								DataViewRowState.CurrentRows));
+}
+		
 	});
 
 	//Non-Logs
@@ -755,7 +833,7 @@ void Main()
 											//workBook.Cells["1:1"].Style.Fill.BackgroundColor.SetColor(System.Drawing.Color.LightGray);
 											workSheet.Cells["H:H"].Style.Numberformat.Format = "#,###,###,##0";
 
-											//workSheet.Cells["H1"].AddComment("Change Numeric Format to Display Decimals", "Rich Andersen");
+											workSheet.Cells["H1"].AddComment("Change Numeric Format to Display Decimals", "Rich Andersen");
 											workSheet.Cells["H1"].Value = workSheet.Cells["H1"].Text + "(Formatted)";
 											workSheet.View.FreezePanes(2, 1);
 											workSheet.Cells["A1:H1"].AutoFilter = true;
@@ -860,6 +938,8 @@ void Main()
 			//Cassandra Log Summary
 			//Need to wait until all logs are parsed...
 			logParsingTasks.ForEach(task => task.Wait());
+			logSummaryParsingTasks.ForEach(task => task.Wait());
+			
 			DTLoadIntoExcelWorkBook(excelPkg,
 										excelWorkSheetSummaryLogCassandra,
 										dtLogSummaryStack,
@@ -877,7 +957,10 @@ void Main()
 											workSheet.Cells.AutoFitColumns();
 										},
 										false,
-										-1);
+										-1,
+										new Tuple<string, string, DataViewRowState>(null,
+									   												"[Timestamp Period] DESC, [Data Center], [Assocated Item], [Value]",
+																					DataViewRowState.CurrentRows));
 
 
 			excelPkg.Save();
@@ -886,6 +969,7 @@ void Main()
 	}
 	
 	runLogToExcel.Wait();
+	runStatusLogToExcel.Wait();
 	
 	#endregion
 }
@@ -946,25 +1030,26 @@ ExcelRangeBase DTLoadIntoExcelWorkBook(ExcelPackage excelPkg,
 											string workSheetName,
 											System.Data.DataTable dtExcel,
 											Action<ExcelWorksheet> worksheetAction = null,
-											string filterView = null,
+											Tuple<string,string,DataViewRowState> viewFilterSortRowStateOpts = null,
 											string startingWSCell = "A1")
 {
 	dtExcel.AcceptChanges();
 
-	if (!string.IsNullOrEmpty(filterView))
-	{
-		var dataView = new DataView(dtExcel, filterView, null, DataViewRowState.CurrentRows);
-
-		if (dataView != null)
-		{
-			dtExcel = dataView.ToTable(dtExcel.TableName);
-		}
-	}
-	
 	var dtErrors = dtExcel.GetErrors();
 	if (dtErrors.Length > 0)
 	{
 		dtErrors.Dump(string.Format("Table \"{0}\" Has Error", dtExcel.TableName));
+	}
+
+	if (dtExcel.Rows.Count == 0) return null;
+
+	if (viewFilterSortRowStateOpts != null)
+	{
+		dtExcel = (new DataView(dtExcel,
+								viewFilterSortRowStateOpts.Item1,
+								viewFilterSortRowStateOpts.Item2,
+								viewFilterSortRowStateOpts.Item3))
+						.ToTable();
 	}
 
 	var workSheet = excelPkg.Workbook.Worksheets[workSheetName];
@@ -975,15 +1060,20 @@ ExcelRangeBase DTLoadIntoExcelWorkBook(ExcelPackage excelPkg,
 	else
 	{
 		workSheet.Cells.Clear();
+		foreach (ExcelComment comment in workSheet.Comments.Cast<ExcelComment>().ToArray())
+		{
+			workSheet.Comments.Remove(comment);
+		}
 	}
 
-	if (string.IsNullOrEmpty(filterView))
+	if (viewFilterSortRowStateOpts == null || string.IsNullOrEmpty(viewFilterSortRowStateOpts.Item1))
 	{
 		Console.WriteLine("Loading DataTable \"{0}\" into Excel WorkSheet \"{1}\". Rows: {2:###,###,##0}", dtExcel.TableName, workSheet.Name, dtExcel.Rows.Count);
 	}
 	else
 	{
-		Console.WriteLine("Loading DataTable \"{0}\" into Excel WorkSheet \"{1}\" with Filter \"{2}\". Rows: {3:###,###,##0}", dtExcel.TableName, workSheet.Name, filterView, dtExcel.Rows.Count);
+		Console.WriteLine("Loading DataTable \"{0}\" into Excel WorkSheet \"{1}\" with Filter \"{2}\". Rows: {3:###,###,##0}", 
+							dtExcel.TableName, workSheet.Name, viewFilterSortRowStateOpts.Item1, dtExcel.Rows.Count);
 	}
 	
 	var loadRange = workSheet.Cells[startingWSCell].LoadFromDataTable(dtExcel, true);
@@ -1002,110 +1092,131 @@ ExcelRangeBase DTLoadIntoExcelWorkBook(ExcelPackage excelPkg,
 											Action<ExcelWorksheet> worksheetAction = null,
 											bool enableMaxRowLimitPerWorkSheet = true,
 											int maxRowInExcelWorkSheet = MaxRowInExcelWorkSheet,
-											string filterView = null,
+											Tuple<string,string,DataViewRowState> viewFilterSortRowStateOpts = null,
 											string startingWSCell = "A1")
 {
-	var orginalWSName = workSheetName;
-	var workSheet = excelPkg.Workbook.Worksheets[workSheetName];
-	if (workSheet == null)
+	DataRow[] dtErrors;
+	DataTable dtComplete;
+	var dtExcelList = new List<DataTable>();
+	DataTable dtInExcel;
+	
+	while (dtExcels.Pop(out dtInExcel))
 	{
-		workSheet = excelPkg.Workbook.Worksheets.Add(workSheetName);
+		dtExcelList.Add(dtInExcel);
+	}
+
+	if (dtExcelList.Count == 0)
+	{
+		return null;
+	}
+	
+	if (dtExcelList.Count == 1)
+	{
+		dtComplete = dtExcelList[0];
 	}
 	else
 	{
-		workSheet.Cells.Clear();
+		dtComplete = new DataTable();
+
+		dtExcelList[0]
+			.Columns
+			.Cast<DataColumn>()
+			.ForEach(dc => dtComplete.Columns.Add(dc.ColumnName, dc.DataType).AllowDBNull = dc.AllowDBNull);
+			
+		dtComplete.BeginLoadData();
+
+		foreach (var dtExcel in dtExcelList)
+		{
+			dtExcel.AcceptChanges();
+
+			dtErrors = dtExcel.GetErrors();
+			if (dtErrors.Length > 0)
+			{
+				dtErrors.Dump(string.Format("Table \"{0}\" Has Error", dtExcel.TableName));
+			}
+
+			if (dtExcel.Rows.Count == 0) continue;
+			
+			using (var dtReader = dtExcel.CreateDataReader())
+			{
+				dtComplete.Load(dtReader);
+			}
+		}
+
+		dtComplete.EndLoadData();
+		dtComplete.AcceptChanges();
+	}
+	
+	if(dtComplete.Rows.Count == 0) return null;
+
+	if (viewFilterSortRowStateOpts != null)
+	{
+		dtComplete = (new DataView(dtComplete,
+									viewFilterSortRowStateOpts.Item1,
+									viewFilterSortRowStateOpts.Item2,
+									viewFilterSortRowStateOpts.Item3))
+					.ToTable();
 	}
 
-	System.Data.DataTable dtExcel;
-	ExcelRangeBase rangeLoadAt = workSheet.Cells[startingWSCell];
-	ExcelRangeBase loadRange = null;
-	bool printHdrs = true;
-	DataRow[] dtErrors;
-	int wsCount = 0;
-	int totalRows = 0;
-	
-	while (dtExcels.Pop(out dtExcel))
-	{
-		dtExcel.AcceptChanges();
+	if (enableMaxRowLimitPerWorkSheet
+				&& maxRowInExcelWorkSheet > 0
+				&& dtComplete.Rows.Count > maxRowInExcelWorkSheet)
+	{		
+		var dtSplits = new List<DataTable>();
+		var dtCurrent = new DataTable();
+		int totalRows = 0;
 
-		if (!string.IsNullOrEmpty(filterView))
+		dtComplete
+			.Columns
+			.Cast<DataColumn>()
+			.ForEach(dc => dtCurrent.Columns.Add(dc.ColumnName, dc.DataType).AllowDBNull = dc.AllowDBNull);
+
+		dtCurrent.BeginLoadData();
+		
+		foreach (DataRow drSource in dtComplete.Rows)
 		{
-			var dataView = new DataView(dtExcel, filterView, null, DataViewRowState.CurrentRows);
-
-			if (dataView != null)
+			if (totalRows > maxRowInExcelWorkSheet)
 			{
-				dtExcel = dataView.ToTable(dtExcel.TableName);
+				dtCurrent.EndLoadData();
+				dtSplits.Add(dtCurrent);
+				dtCurrent = new DataTable();
+				dtComplete
+					.Columns
+					.Cast<DataColumn>()
+					.ForEach(dc => dtCurrent.Columns.Add(dc.ColumnName, dc.DataType).AllowDBNull = dc.AllowDBNull);
+				dtCurrent.BeginLoadData();
+				totalRows = 0;
 			}
+
+			dtCurrent.LoadDataRow(drSource.ItemArray, LoadOption.OverwriteChanges);
+			++totalRows;
 		}
 		
-		dtErrors = dtExcel.GetErrors();
-		if (dtErrors.Length > 0)
-		{
-			dtErrors.Dump(string.Format("Table \"{0}\" Has Error", dtExcel.TableName));
+		dtCurrent.EndLoadData();
+		dtSplits.Add(dtCurrent);
+		totalRows = 0;
+		
+		ExcelRangeBase excelRange = null;
+		
+		foreach (var dtSplit in dtSplits)
+		{			
+			excelRange = DTLoadIntoExcelWorkBook(excelPkg,
+													string.Format("{0}-{1:000}", workSheetName, ++totalRows),
+													dtSplit,
+													worksheetAction,
+													null,
+													startingWSCell);
 		}
 
-		if (enableMaxRowLimitPerWorkSheet 
-				&& maxRowInExcelWorkSheet > 0
-				&& totalRows >= maxRowInExcelWorkSheet)
-		{
-			++wsCount;
-
-
-			if (worksheetAction != null)
-			{
-				worksheetAction(workSheet);
-			}
-
-			workSheetName = string.Format("{0}-{1:000}", orginalWSName, wsCount);
-			workSheet = excelPkg.Workbook.Worksheets[workSheetName];
-			if (workSheet == null)
-			{
-				workSheet = excelPkg.Workbook.Worksheets.Add(workSheetName);
-			}
-			else
-			{
-				workSheet.Cells.Clear();
-			}
-
-			printHdrs = true;
-			rangeLoadAt = workSheet.Cells[startingWSCell];
-			totalRows = 0;
-		}
-
-		loadRange = rangeLoadAt.LoadFromDataTable(dtExcel, printHdrs);
-
-		if (string.IsNullOrEmpty(filterView))
-		{
-			Console.WriteLine("Loaded DataTable \"{0}\" into Excel WorkSheet \"{1}\" in Range {2}. Rows: {3:###,###,##0}",
-								dtExcel.TableName,
-								workSheet.Name,
-								loadRange == null ? "<Empty>" : loadRange.Address,
-								dtExcel.Rows.Count);
-		}
-		else
-		{
-			Console.WriteLine("Loaded DataTable \"{0}\" into Excel WorkSheet \"{1}\" with Filter \"{2}\" in Range {3}. Rows: {4:###,###,##0}",
-								dtExcel.TableName,
-								workSheet.Name,
-								filterView,
-								loadRange == null ? "<Empty>" : loadRange.Address,
-								dtExcel.Rows.Count);
-		}
-									
-		if (loadRange != null)
-		{
-			printHdrs = false;
-			rangeLoadAt = workSheet.Cells[startingWSCell[0].ToString() + (loadRange.End.Row + 1)];
-			totalRows += dtExcel.Rows.Count;
-		}
+		return excelRange;
 	}
-
-	if (worksheetAction != null && totalRows > 0)
-	{
-		worksheetAction(workSheet);
-	}
-
-	return loadRange;
+	
+	return DTLoadIntoExcelWorkBook(excelPkg,
+									workSheetName,
+									dtComplete,
+									worksheetAction,
+									null,
+									startingWSCell);
 }
 
 int DTLoadIntoDifferentExcelWorkBook(string excelFilePath, 
@@ -1114,61 +1225,183 @@ int DTLoadIntoDifferentExcelWorkBook(string excelFilePath,
 											Action<ExcelWorksheet> worksheetAction = null,
 											int maxRowInExcelWorkBook = MaxRowInExcelWorkBook,
 											int maxRowInExcelWorkSheet = MaxRowInExcelWorkSheet,
-											string filterView = null,
+											Tuple<string,string,DataViewRowState> viewFilterSortRowStateOpts = null,
 											string startingWSCell = "A1")
 {
-	DataTable dtExcel;
-	int wsCount = 0;
-	int totalRows = 0;
 	var excelTargetFile = Common.Path.PathUtils.BuildFilePath(excelFilePath);
-	var stackGroups = new List<Common.Patterns.Collections.LockFree.Stack<System.Data.DataTable>>();
-	var newStack = new Common.Patterns.Collections.LockFree.Stack<System.Data.DataTable>();
-	
-	while (dtExcels.Pop(out dtExcel))
-	{
-		totalRows += dtExcel.Rows.Count;
-		newStack.Push(dtExcel);
+	DataRow[] dtErrors;
+	DataTable dtComplete;
+	var dtExcelList = new List<DataTable>();
+	DataTable dtInExcel;
 
-		if (maxRowInExcelWorkBook > 0
-				&& totalRows >= maxRowInExcelWorkBook)
+	while (dtExcels.Pop(out dtInExcel))
+	{
+		dtExcelList.Add(dtInExcel);
+	}
+
+	if (dtExcelList.Count == 0)
+	{
+		return 0;
+	}
+
+	if (dtExcelList.Count == 1)
+	{
+		dtComplete = dtExcelList[0];
+	}
+	else
+	{
+		dtComplete = new DataTable();
+
+		dtExcelList[0]
+			.Columns
+			.Cast<DataColumn>()
+			.ForEach(dc => dtComplete.Columns.Add(dc.ColumnName, dc.DataType).AllowDBNull = dc.AllowDBNull);
+
+		dtComplete.BeginLoadData();
+
+		foreach (var dtExcel in dtExcelList)
 		{
-			stackGroups.Add(newStack);
-			totalRows = 0;
-			newStack = new Common.Patterns.Collections.LockFree.Stack<System.Data.DataTable>();
+			dtExcel.AcceptChanges();
+			
+			dtErrors = dtExcel.GetErrors();
+			if (dtErrors.Length > 0)
+			{
+				dtErrors.Dump(string.Format("Table \"{0}\" Has Error", dtExcel.TableName));
+			}
+			
+			if(dtExcel.Rows.Count == 0)
+				continue;
+			
+			using (var dtReader = dtExcel.CreateDataReader())
+			{
+				dtComplete.Load(dtReader);
+			}
 		}
+
+		dtComplete.EndLoadData();
+		dtComplete.AcceptChanges();
 	}
+	
+	if(dtComplete.Rows.Count == 0) 
+		return 0;
 
-	if (totalRows > 0)
+	if (maxRowInExcelWorkBook <= 0 || dtComplete.Rows.Count <= maxRowInExcelWorkBook)
 	{
-		stackGroups.Add(newStack);
-	}
+		excelTargetFile.FileNameFormat = string.Format("{0}-{{0}}{1}",
+																excelTargetFile.Name,
+																excelTargetFile.FileExtension);
 
-	excelTargetFile.FileNameFormat = string.Format("{0}-{{0}}-{{1:000}}{1}",
-													excelTargetFile.Name,
-													excelTargetFile.FileExtension);
-
-	Parallel.ForEach(stackGroups, stack =>
-	//foreach (var stack in stackGroups)
-	{
-		var excelFile = excelTargetFile.ApplyFileNameFormat(new object[] { workSheetName, wsCount++}).FileInfo();
-		
+		var excelFile = excelTargetFile.ApplyFileNameFormat(new object[] { workSheetName }).FileInfo();
 		using (var excelPkg = new ExcelPackage(excelFile))
 		{
-			DTLoadIntoExcelWorkBook(excelPkg, 
+			if (maxRowInExcelWorkSheet <= 0 || dtComplete.Rows.Count <= maxRowInExcelWorkSheet)
+			{
+
+				DTLoadIntoExcelWorkBook(excelPkg,
 										workSheetName,
-										stack,
+										dtComplete,
+										worksheetAction,
+										viewFilterSortRowStateOpts,
+										startingWSCell);
+			}
+			else
+			{
+				var newStack = new Common.Patterns.Collections.LockFree.Stack<System.Data.DataTable>();
+
+				newStack.Push(dtComplete);
+
+				DTLoadIntoExcelWorkBook(excelPkg,
+											workSheetName,
+											newStack,
+											worksheetAction,
+											maxRowInExcelWorkSheet > 0,
+											maxRowInExcelWorkSheet,
+											viewFilterSortRowStateOpts,
+											startingWSCell);
+			}
+
+			excelPkg.Save();
+			Console.WriteLine("*** Excel WorkBooks saved to \"{0}\"", excelFile.FullName);
+		}
+		
+		return dtComplete.Rows.Count;
+	}
+
+	if (viewFilterSortRowStateOpts != null)
+	{
+		dtComplete = (new DataView(dtComplete,
+									viewFilterSortRowStateOpts.Item1,
+									viewFilterSortRowStateOpts.Item2,
+									viewFilterSortRowStateOpts.Item3))
+					.ToTable();
+	}
+
+	var dtSplits = new List<DataTable>();
+	var dtCurrent = new DataTable();
+	int totalRows = 0;
+
+	dtComplete
+		.Columns
+		.Cast<DataColumn>()
+		.ForEach(dc => dtCurrent.Columns.Add(dc.ColumnName, dc.DataType).AllowDBNull = dc.AllowDBNull);
+
+	dtCurrent.BeginLoadData();
+
+	foreach (DataRow drSource in dtComplete.Rows)
+	{
+		if (totalRows > maxRowInExcelWorkBook)
+		{
+			dtCurrent.EndLoadData();
+			dtSplits.Add(dtCurrent);
+			dtCurrent = new DataTable();
+			dtComplete
+				.Columns
+				.Cast<DataColumn>()
+				.ForEach(dc => dtCurrent.Columns.Add(dc.ColumnName, dc.DataType).AllowDBNull = dc.AllowDBNull);
+			dtCurrent.BeginLoadData();
+			totalRows = 0;
+		}
+
+		dtCurrent.LoadDataRow(drSource.ItemArray, LoadOption.OverwriteChanges);
+		++totalRows;
+	}
+
+	dtCurrent.EndLoadData();
+	dtSplits.Add(dtCurrent);
+	totalRows = 0;
+
+	int nResult = 0;
+
+	excelTargetFile.FileNameFormat = string.Format("{0}-{{0}}-{{1:000}}{1}",
+														excelTargetFile.Name,
+														excelTargetFile.FileExtension);
+
+	Parallel.ForEach(dtSplits, dtSplit =>
+	//foreach (var dtSplit in dtSplits)
+	{
+		var excelFile = excelTargetFile.ApplyFileNameFormat(new object[] { workSheetName, ++totalRows }).FileInfo();
+		using (var excelPkg = new ExcelPackage(excelFile))
+		{
+			var newStack = new Common.Patterns.Collections.LockFree.Stack<System.Data.DataTable>();
+
+			newStack.Push(dtComplete);
+
+			DTLoadIntoExcelWorkBook(excelPkg,
+										workSheetName,
+										newStack,
 										worksheetAction,
 										maxRowInExcelWorkSheet > 0,
 										maxRowInExcelWorkSheet,
-										filterView,
+										viewFilterSortRowStateOpts,
 										startingWSCell);
-										
+			nResult += dtSplit.Rows.Count;
+
 			excelPkg.Save();
 			Console.WriteLine("*** Excel WorkBooks saved to \"{0}\"", excelFile.FullName);
 		}
 	});
 
-	return wsCount;
+	return nResult;
 }
 
 #endregion
@@ -2866,7 +3099,7 @@ void ParseYamlListIntoDataTable(Common.Patterns.Collections.LockFree.Stack<List<
 
 class CLogSummaryInfo : IEqualityComparer<CLogSummaryInfo>, IEquatable<CLogSummaryInfo>
 {
-	public CLogSummaryInfo(DateTime period, TimeSpan periodSpan, string itemType, string itemValue, DataRow dataRow)
+	public CLogSummaryInfo(DateTime period, TimeSpan periodSpan, string itemType, string itemValue, DataRowView dataRow)
 	{
 //		dtCLog.Columns.Add("Data Center", typeof(string)).AllowDBNull = true;
 //		dtCLog.Columns.Add("Node IPAdress", typeof(string));
@@ -2940,7 +3173,7 @@ class CLogSummaryInfo : IEqualityComparer<CLogSummaryInfo>, IEquatable<CLogSumma
 				&& this.Period == y.Period;
 	}
 
-	public bool Equals(DateTime period, string itemType, string itemValue, DataRow dataRow)
+	public bool Equals(DateTime period, string itemType, string itemValue, DataRowView dataRow)
 	{
 		if(dataRow == null) return false; 
 		
@@ -2974,12 +3207,12 @@ void ParseCassandraLogIntoSummaryDataTable(DataTable dtroCLog,
 		dtCSummaryLog.Columns.Add("Timestamp Period", typeof(DateTime));
 		dtCSummaryLog.Columns.Add("Aggregation Period", typeof(TimeSpan));
 		dtCSummaryLog.Columns.Add("Data Center", typeof(string)).AllowDBNull = true;
-		dtCSummaryLog.Columns.Add("Assocated Item", typeof(string)).AllowDBNull = true;
+		dtCSummaryLog.Columns.Add("Node IPAddress", typeof(string)).AllowDBNull = true;
+		dtCSummaryLog.Columns.Add("Type", typeof(string)).AllowDBNull = true;
 		dtCSummaryLog.Columns.Add("Value", typeof(string)).AllowDBNull = true;
+		dtCSummaryLog.Columns.Add("Assocated Item", typeof(string)).AllowDBNull = true;
 		dtCSummaryLog.Columns.Add("Occurrences", typeof(int));
-		dtCSummaryLog.Columns.Add("Node IPAddress", typeof(string)).AllowDBNull = true;						
-		dtCSummaryLog.Columns.Add("Type", typeof(string)).AllowDBNull = true;		
-		
+			
 		dtCSummaryLog.DefaultView.Sort = "[Timestamp Period] DESC, [Data Center], [Assocated Item], [Value]";
 	}
 
@@ -3019,7 +3252,7 @@ void ParseCassandraLogIntoSummaryDataTable(DataTable dtroCLog,
 //				dataView.ToTable().Rows[dataView.ToTable().Rows.Count - 1].Dump();
 //			}
 			
-			foreach (DataRow dataRow in dataView.ToTable().Rows)
+			foreach (DataRowView dataRow in dataView)
 			{
 				if ((DateTime)dataRow["Timestamp"] < endPeriod)
 				{
@@ -3183,6 +3416,319 @@ void ParseCassandraLogIntoSummaryDataTable(DataTable dtroCLog,
 	}
 }
 
+static Regex RegExG1Line = new Regex(@"\s*G1.+in\s+(\d+)(?:.*Eden Space:\s*(\d+)\s*->\s*(\d+))?(?:.*Old Gen:\s*(\d+)\s*->\s*(\d+))?(?:.*Survivor Space:\s*(\d+)\s*->\s*(\d+).*)?.*",
+										RegexOptions.IgnoreCase | RegexOptions.Compiled);
+static Regex RegExGCLine = new Regex(@"\s*GC.+ParNew:\s+(\d+)",
+										RegexOptions.IgnoreCase | RegexOptions.Compiled);
+static Regex RegExGCMSLine = new Regex(@"\s*ConcurrentMarkSweep.+in\s+(\d+)(?:.*Old Gen:\s*(\d+)\s*->\s*(\d+))?(?:.*Eden Space:\s*(\d+)\s*->\s*(\d+))?.*",
+										RegexOptions.IgnoreCase | RegexOptions.Compiled);
+static Regex RegExPoolLine = new Regex(@"\s*(\w+)\s+(\d+)\s+(\d+)\s+(\d+)\s+(\d+)\s+(\d+)\s*",
+										RegexOptions.IgnoreCase | RegexOptions.Compiled);
+static Regex RegExCacheLine = new Regex(@"\s*(\w+)\s+(\d+)\s+(\d+)\s+(\w+)\s*",
+										RegexOptions.IgnoreCase | RegexOptions.Compiled);
+static Regex RegExTblLine = new Regex(@"\s*(.+)\s+(\d+)\s*,\s*(\d+)\s*",
+										RegexOptions.IgnoreCase | RegexOptions.Compiled);
+static Regex RegExPool2Line = new Regex(@"\s*(\w+)\s+(\w+/\w+|\d+)\s+(\w+/\w+|\d+).*",
+										RegexOptions.IgnoreCase | RegexOptions.Compiled);
+										
+void ParseCassandraLogIntoStatusLogDataTable(DataTable dtroCLog,
+												DataTable dtCStatusLog,
+												string ipAddress,
+												string dcName,
+												List<string> ignoreKeySpaces)
+{
+	//GCInspector.java:258 - G1 Young Generation GC in 691ms.  G1 Eden Space: 4,682,940,416 -> 0; G1 Old Gen: 2,211,450,256 -> 2,797,603,280; G1 Survivor Space: 220,200,960 -> 614,465,536; 
+	//GCInspector.java:258 - G1 Young Generation GC in 277ms. G1 Eden Space: 4047503360 -> 0; G1 Old Gen: 2855274656 -> 2855274648;
+	//GCInspector.java (line 116) GC for ParNew: 394 ms for 1 collections, 13571498424 used; max is 25340346368
+	//" ConcurrentMarkSweep GC in 363ms. CMS Old Gen: 5688178056 -> 454696416; Par Eden Space: 3754560 -> 208755688;"
+	//StatusLogger.java:51 - Pool Name                    Active   Pending      Completed   Blocked  All Time Blocked
+	//StatusLogger.java:66 - MutationStage                     0         0     2424035521         0                 0
+	//StatusLogger.java:66 - CompactionManager                 1         1
+	//StatusLogger.java:66 - MessagingService                n/a       0/0
+	//
+	//StatusLogger.java:97 - Cache Type                     Size                 Capacity               KeysToSave
+	//StatusLogger.java:99 - KeyCache                  100245406                104857600                      all
+	//
+	//StatusLogger.java:112 - ColumnFamily                Memtable ops,data
+	//StatusLogger.java:115 - dse_perf.node_slow_log            2120,829964
+	if (dtCStatusLog.Columns.Count == 0)
+	{
+		dtCStatusLog.Columns.Add("Timestamp", typeof(DateTime));		
+		dtCStatusLog.Columns.Add("Data Center", typeof(string)).AllowDBNull = true;
+		dtCStatusLog.Columns.Add("Node IPAddress", typeof(string));
+		dtCStatusLog.Columns.Add("Pool/Cache Type", typeof(string)).AllowDBNull = true;
+		dtCStatusLog.Columns.Add("KeySpace", typeof(string)).AllowDBNull = true;
+		dtCStatusLog.Columns.Add("Table", typeof(string)).AllowDBNull = true;
+		dtCStatusLog.Columns.Add("GC Time (ms)", typeof(int)).AllowDBNull = true; //g
+		dtCStatusLog.Columns.Add("Eden-From (mb)", typeof(decimal)).AllowDBNull = true; //h
+		dtCStatusLog.Columns.Add("Eden-To (mb)", typeof(decimal)).AllowDBNull = true;
+		dtCStatusLog.Columns.Add("Old-From (mb)", typeof(decimal)).AllowDBNull = true;
+		dtCStatusLog.Columns.Add("Old-To (mb)", typeof(decimal)).AllowDBNull = true;
+		dtCStatusLog.Columns.Add("Survivor-From (mb)", typeof(decimal)).AllowDBNull = true;
+		dtCStatusLog.Columns.Add("Survivor-To (mb)", typeof(decimal)).AllowDBNull = true; //m
+		dtCStatusLog.Columns.Add("Active", typeof(object)).AllowDBNull = true; //n
+		dtCStatusLog.Columns.Add("Pending", typeof(object)).AllowDBNull = true; //o
+		dtCStatusLog.Columns.Add("Completed", typeof(long)).AllowDBNull = true;
+		dtCStatusLog.Columns.Add("Blocked", typeof(long)).AllowDBNull = true;
+		dtCStatusLog.Columns.Add("All Time Blocked", typeof(long)).AllowDBNull = true; //r
+		dtCStatusLog.Columns.Add("Size (mb)", typeof(decimal)).AllowDBNull = true;//s
+		dtCStatusLog.Columns.Add("Capacity (mb)", typeof(decimal)).AllowDBNull = true; //y
+		dtCStatusLog.Columns.Add("KeysToSave", typeof(string)).AllowDBNull = true; //u
+		dtCStatusLog.Columns.Add("MemTable OPS", typeof(long)).AllowDBNull = true; //v
+		dtCStatusLog.Columns.Add("Data (mb)", typeof(decimal)).AllowDBNull = true; //w
+		
+		dtCStatusLog.DefaultView.Sort = "[Timestamp] DESC, [Data Center], [Pool/Cache Type], [KeySpace], [Table], [Node IPAddress]";
+	}
+	
+	bool processingPool = false;
+	bool processingCache = false;
+	bool processingTable = false;
+
+	if (dtroCLog.Rows.Count > 0)
+	{
+		//		dtCLog.Columns.Add("Data Center", typeof(string)).AllowDBNull = true;
+		//		dtCLog.Columns.Add("Node IPAdress", typeof(string));
+		//		dtCLog.Columns.Add("Timestamp", typeof(DateTime));
+		//		dtCLog.Columns.Add("Indicator", typeof(string));
+		//		dtCLog.Columns.Add("Task", typeof(string));
+		//		dtCLog.Columns.Add("Item", typeof(string));
+		//		dtCLog.Columns.Add("Assocated Item", typeof(string)).AllowDBNull = true;
+		//		dtCLog.Columns.Add("Assocated Value", typeof(object)).AllowDBNull = true;
+		//		dtCLog.Columns.Add("Description", typeof(string));
+		//		dtCLog.Columns.Add("Flagged", typeof(bool)).AllowDBNull = true;
+		
+		var statusLogView = new DataView(dtroCLog,
+											"[Item] in ('GCInspector.java', 'StatusLogger.java')",
+											"[TimeStamp] ASC, [Item] ASC",
+											DataViewRowState.CurrentRows);
+			
+		string item;
+		
+		foreach (DataRowView vwDataRow in statusLogView)
+		{
+			item = vwDataRow["Item"] as string;
+
+			if (string.IsNullOrEmpty(item))
+			{
+				continue;
+			}
+
+			if (item == "GCInspector.java")
+			{
+				processingPool = false;
+				processingCache = false;
+				processingTable = false;
+				
+				var descr = vwDataRow["Description"] as string;
+
+				if (string.IsNullOrEmpty(descr))
+				{
+					continue;
+				}
+
+				if (descr.TrimStart().StartsWith("GC for ParNew"))
+				{
+					var splits = RegExGCLine.Split(descr);
+					var dataRow = dtCStatusLog.NewRow();
+
+					dataRow["Timestamp"] = vwDataRow["Timestamp"];
+					dataRow["Data Center"] = dcName;
+					dataRow["Node IPAddress"] = ipAddress;
+					dataRow["Pool/Cache Type"] = "GC";
+					dataRow["GC Time (ms)"] = DetermineTime(splits[1]);
+					
+					dtCStatusLog.Rows.Add(dataRow);
+				}
+				if (descr.TrimStart().StartsWith("ConcurrentMarkSweep"))
+				{
+					var splits = RegExGCMSLine.Split(descr);
+					var dataRow = dtCStatusLog.NewRow();
+
+					dataRow["Timestamp"] = vwDataRow["Timestamp"];
+					dataRow["Data Center"] = dcName;
+					dataRow["Node IPAddress"] = ipAddress;
+					dataRow["Pool/Cache Type"] = "GC-CMS";
+					dataRow["GC Time (ms)"] = DetermineTime(splits[1]);
+					
+					if (splits.Length >= 4 && !string.IsNullOrEmpty(splits[2]))
+					{
+						dataRow["Old-From (mb)"] = ConvertInToMB(splits[2], "bytes");
+						dataRow["Old-To (mb)"] = ConvertInToMB(splits[3], "bytes");
+					}
+					if (splits.Length >= 6 && !string.IsNullOrEmpty(splits[4]))
+					{
+						dataRow["Eden-From (mb)"] = ConvertInToMB(splits[4], "bytes");
+						dataRow["Eden-To (mb)"] = ConvertInToMB(splits[5], "bytes");
+					}
+					
+					dtCStatusLog.Rows.Add(dataRow);
+				}
+				else if (descr.TrimStart().StartsWith("G1 Young Generation GC in"))
+				{
+					var splits = RegExG1Line.Split(descr);
+					var dataRow = dtCStatusLog.NewRow();
+
+					dataRow["Timestamp"] = vwDataRow["Timestamp"];
+					dataRow["Data Center"] = dcName;
+					dataRow["Node IPAddress"] = ipAddress;
+					dataRow["Pool/Cache Type"] = "G1";
+					dataRow["GC Time (ms)"] = DetermineTime(splits[1]);
+
+					if (splits.Length >= 4 && !string.IsNullOrEmpty(splits[2]))
+					{
+						dataRow["Eden-From (mb)"] = ConvertInToMB(splits[2], "bytes");
+						dataRow["Eden-To (mb)"] = ConvertInToMB(splits[3], "bytes");
+					}
+					if (splits.Length >= 6 && !string.IsNullOrEmpty(splits[4]))
+					{
+						dataRow["Old-From (mb)"] = ConvertInToMB(splits[4], "bytes");
+						dataRow["Old-To (mb)"] = ConvertInToMB(splits[5], "bytes");
+					}
+					if (splits.Length >= 8 && !string.IsNullOrEmpty(splits[6]))
+					{
+						dataRow["Survivor-From (mb)"] = ConvertInToMB(splits[6], "bytes");
+						dataRow["Survivor-To (mb)"] = ConvertInToMB(splits[7], "bytes");
+					}
+
+					dtCStatusLog.Rows.Add(dataRow);
+				}
+
+				continue;
+			}
+			else if (item == "StatusLogger.java")
+			{
+				var descr = vwDataRow["Description"] as string;
+
+				if (string.IsNullOrEmpty(descr))
+				{
+					continue;
+				}
+				
+				descr = descr.Trim();
+
+				if (descr.StartsWith("Pool Name"))
+				{
+					processingPool = true;
+					processingCache = false;
+					processingTable = false;
+					continue;
+				}
+				else if (descr.StartsWith("ColumnFamily "))
+				{
+					processingPool = false;
+					processingCache = false;
+					processingTable = true;
+					continue;
+				}
+				else if (descr.StartsWith("Cache Type"))
+				{
+					processingPool = false;
+					processingCache = true;
+					processingTable = false;
+					continue;
+				}
+				else if (processingCache)
+				{
+					var splits = RegExCacheLine.Split(descr);
+					var dataRow = dtCStatusLog.NewRow();
+
+					dataRow["Timestamp"] = vwDataRow["Timestamp"];
+					dataRow["Data Center"] = dcName;
+					dataRow["Node IPAddress"] = ipAddress;
+					dataRow["Pool/Cache Type"] = splits[1];
+					dataRow["Size (mb)"] = ConvertInToMB(splits[2], "bytes");
+					dataRow["Capacity (mb)"] = ConvertInToMB(splits[3], "bytes");
+					dataRow["KeysToSave"] = splits[4];
+
+					dtCStatusLog.Rows.Add(dataRow);
+					continue;
+				}
+				else if (processingPool)
+				{
+					var splits = RegExPoolLine.Split(descr);
+					var dataRow = dtCStatusLog.NewRow();
+
+					if (splits.Length == 1)
+					{
+						splits = RegExPool2Line.Split(descr);
+					}
+					
+					dataRow["Timestamp"] = vwDataRow["Timestamp"];
+					dataRow["Data Center"] = dcName;
+					dataRow["Node IPAddress"] = ipAddress;
+					dataRow["Pool/Cache Type"] = splits[1];
+
+					if (splits.Length == 8)
+					{
+						dataRow["Active"] = long.Parse(splits[2]);
+						dataRow["Pending"] = long.Parse(splits[3]);
+						dataRow["Completed"] = long.Parse(splits[4]);
+						dataRow["Blocked"] = long.Parse(splits[5]);
+						dataRow["All Time Blocked"] = long.Parse(splits[6]);
+					}
+					else
+					{
+						long numValue;
+						if (long.TryParse(splits[2], out numValue))
+						{
+							dataRow["Active"] = numValue;
+						}
+						else
+						{
+							dataRow["Active"] = splits[2];
+						}
+						
+						if (long.TryParse(splits[3], out numValue))
+						{
+							dataRow["Pending"] = numValue;
+						}
+						else
+						{
+							dataRow["Pending"] = splits[3];
+						}
+					}
+
+					dtCStatusLog.Rows.Add(dataRow);
+					continue;
+				}
+				else if (processingTable)
+				{
+					var splits = RegExTblLine.Split(descr);
+
+					var ksTable = SplitTableName(splits[1], null);
+
+					if (ignoreKeySpaces.Contains(ksTable.Item1))
+					{
+						continue;
+					}
+
+					var dataRow = dtCStatusLog.NewRow();
+
+					dataRow["Timestamp"] = vwDataRow["Timestamp"];
+					dataRow["Data Center"] = dcName;
+					dataRow["Node IPAddress"] = ipAddress;
+					dataRow["Pool/Cache Type"] = "ColumnFamily";
+					dataRow["KeySpace"] = ksTable.Item1;
+					dataRow["Table"] = ksTable.Item2;
+					dataRow["MemTable OPS"] = long.Parse(splits[2]);
+					dataRow["Data (mb)"] = ConvertInToMB(splits[3], "bytes");
+
+					dtCStatusLog.Rows.Add(dataRow);
+					continue;
+				}
+			}
+			else
+			{
+				processingPool = false;
+				processingCache = false;
+				processingTable = false;
+			}
+
+		}
+	}
+}
+
+
 void ParseOSMachineInfoDataTable(IDirectoryPath directoryPath,
 									string[] osmachineFiles,									
 									string ipAddress,
@@ -3282,8 +3828,9 @@ void ParseOSMachineInfoDataTable(IDirectoryPath directoryPath,
 				{
 					var infoObject = ParseJson(filePath.ReadAllText());
 					
-					dataRow["Available"] = infoObject["available"];
-					dataRow["Cache"] = infoObject["cache"];
+					if(infoObject.ContainsKey("available")) dataRow["Available"] = infoObject["available"];
+					if(infoObject.ContainsKey("cache")) dataRow["Cache"] = infoObject["cache"];
+					if(infoObject.ContainsKey("cached")) dataRow["Cache"] = infoObject["cached"];
 					dataRow["Buffers"] = infoObject["buffers"];
 					dataRow["Shared"] = infoObject["shared"];
 					dataRow["Free"] = infoObject["free"];
