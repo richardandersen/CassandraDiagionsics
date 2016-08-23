@@ -67,9 +67,11 @@ static bool LoadLogsIntoExcel = true;
 void Main()
 {
 	#region Configuration
+	var excelTrmplateFilePath = @"[MyDocuments]\LINQPad Queries\DataStax\dseTemplate.xlsx"; 
+	
 	//Location where this application will write or update the Excel file.
-	var excelFilePath = @"[DeskTop]\Gamesys.xlsx"; //<==== Should be updated
-	//var excelFilePath = @"[DeskTop]\test.xlsx";
+	//var excelFilePath = @"[DeskTop]\Gamesys.xlsx"; //<==== Should be updated
+	var excelFilePath = @"[DeskTop]\test.xlsx";
 	
 	//If diagnosticNoSubFolders is false:
 	//Directory where files are located to parse DSE diagnostics files produced by DataStax OpsCenter diagnostics or a special directory structure where DSE diagnostics information is placed.
@@ -90,8 +92,8 @@ void Main()
 	//If diagnosticNoSubFolders is ture:
 	//	All diagnostic files are located directly under diagnosticPath folder. Each file should have the IP Adress either in the beginning or end of the file name.
 	//		e.g., cfstats_10.192.40.7, system-10.192.40.7.log, 10.192.40.7_system.log, etc.
-	var diagnosticPath = @"[MyDocuments]\LINQPad Queries\DataStax\TestData\gamingactivity-diagnostics-2016_08_10_08_45_40_UTC";
-	//var diagnosticPath = @"[MyDocuments]\LINQPad Queries\DataStax\TestData\production_group_v_1-diagnostics-2016_07_04_15_43_48_UTC"; 
+	//var diagnosticPath = @"[MyDocuments]\LINQPad Queries\DataStax\TestData\gamingactivity-diagnostics-2016_08_10_08_45_40_UTC";
+	var diagnosticPath = @"[MyDocuments]\LINQPad Queries\DataStax\TestData\production_group_v_1-diagnostics-2016_07_04_15_43_48_UTC"; 
 	//@"C:\Users\richard\Desktop\datastax"; 
 	var diagnosticNoSubFolders = false; //<==== Should be Updated 
 	var parseLogs = true;
@@ -110,6 +112,7 @@ void Main()
 	var excelWorkSheetOSMachineInfo= "OS-Machine Info";
 	var excelWorkSheetSummaryLogCassandra = "Cassandra Summary Logs";
 	var excelWorkSheetStatusLogCassandra = "Cassandra Status Logs";
+	//var excelPivotWorkSheets = new string[] {"Read-Write Counts", "Partitions", "Latency", "Storage-Size"};
 
 	List<string> ignoreKeySpaces = new List<string>() { "dse_system", "system_auth", "system_traces", "system", "dse_perf"  }; //MUST BE IN LOWER CASe
 	List<string> cfstatsCreateMBColumns = new List<string>() { "memory used", "bytes", "space used", "data size"}; //MUST BE IN LOWER CASE -- CFStats attributes that contains these phrases/words will convert their values from bytes to MB in a separate Excel Column
@@ -628,11 +631,26 @@ void Main()
 	ParseOPSCenterInfoDataTable((IDirectoryPath) diagPath.Clone().AddChild(opsCenterDir),
 								opsCenterFiles,
 								dtOSMachineInfo);
-								
+
 	#endregion
 
 	#region Excel Creation/Formatting
 
+	if (!string.IsNullOrEmpty(excelTrmplateFilePath))
+	{
+		var excelTemplateFile = Common.Path.PathUtils.BuildFilePath(excelTrmplateFilePath);
+		var excelFile = Common.Path.PathUtils.BuildFilePath(excelFilePath);
+
+		if (!excelFile.Exist()
+				&& excelTemplateFile.Exist())
+		{
+			if (excelTemplateFile.Copy(excelFile))
+			{
+				Console.WriteLine("*** Created Workbook \"{0}\" from Template \"{1}\"", excelFile.Path, excelTemplateFile.Path);
+			}
+		}
+	}
+	
 	//Cassandra Log (usually runs longer)
 	var runLogToExcel = Task.Run(() =>
 	{
@@ -866,6 +884,7 @@ void Main()
 											workSheet.Cells["H1"].Value = workSheet.Cells["H1"].Text + "(Formatted)";
 											workSheet.View.FreezePanes(2, 1);
 											workSheet.Cells["A1:H1"].AutoFilter = true;
+											workSheet.Column(8).Hidden = true; //I
 											workSheet.Cells.AutoFitColumns();
 										},
 										false,
@@ -990,8 +1009,7 @@ void Main()
 										new Tuple<string, string, DataViewRowState>(null,
 									   												"[Timestamp Period] DESC, [Data Center], [Assocated Item], [Value]",
 																					DataViewRowState.CurrentRows));
-
-
+																					
 			excelPkg.Save();
 		} //Save non-log data
 		Console.WriteLine("*** Excel WorkBooks saved to \"{0}\"", excelFile.FullName);
@@ -1145,7 +1163,10 @@ ExcelRangeBase DTLoadIntoExcelWorkBook(ExcelPackage excelPkg,
 	}
 	else
 	{
-		dtComplete = new DataTable();
+		dtComplete = new DataTable(new string(dtExcelList[0].TableName.ToCharArray()
+										.Intersect(dtExcelList[1].TableName.ToCharArray())
+										.Intersect(dtExcelList[dtExcelList.Count - 1].TableName.ToCharArray())
+										.ToArray()) + "-AllRows");
 
 		dtExcelList[0]
 			.Columns
@@ -1180,11 +1201,14 @@ ExcelRangeBase DTLoadIntoExcelWorkBook(ExcelPackage excelPkg,
 
 	if (viewFilterSortRowStateOpts != null)
 	{
+		var tableName = dtComplete.TableName;
+		
 		dtComplete = (new DataView(dtComplete,
 									viewFilterSortRowStateOpts.Item1,
 									viewFilterSortRowStateOpts.Item2,
 									viewFilterSortRowStateOpts.Item3))
 					.ToTable();
+		dtComplete.TableName = tableName + "-Filtered";
 	}
 
 	if (enableMaxRowLimitPerWorkSheet
@@ -1279,7 +1303,10 @@ int DTLoadIntoDifferentExcelWorkBook(string excelFilePath,
 	}
 	else
 	{
-		dtComplete = new DataTable();
+		dtComplete = new DataTable(new string(dtExcelList[0].TableName.ToCharArray()
+										.Intersect(dtExcelList[1].TableName.ToCharArray())
+										.Intersect(dtExcelList[dtExcelList.Count - 1].TableName.ToCharArray())
+										.ToArray()) + "-AllRows");
 
 		dtExcelList[0]
 			.Columns
@@ -1325,7 +1352,6 @@ int DTLoadIntoDifferentExcelWorkBook(string excelFilePath,
 		{
 			if (maxRowInExcelWorkSheet <= 0 || dtComplete.Rows.Count <= maxRowInExcelWorkSheet)
 			{
-
 				DTLoadIntoExcelWorkBook(excelPkg,
 										workSheetName,
 										dtComplete,
@@ -1358,16 +1384,19 @@ int DTLoadIntoDifferentExcelWorkBook(string excelFilePath,
 
 	if (viewFilterSortRowStateOpts != null)
 	{
+		var tableName = dtComplete.TableName;
 		dtComplete = (new DataView(dtComplete,
 									viewFilterSortRowStateOpts.Item1,
 									viewFilterSortRowStateOpts.Item2,
 									viewFilterSortRowStateOpts.Item3))
 					.ToTable();
+		dtComplete.TableName = tableName + "-Filtered";
 	}
 
 	var dtSplits = new List<DataTable>();
-	var dtCurrent = new DataTable();
+	var dtCurrent = new DataTable(dtComplete.TableName + "-Split-0");
 	int totalRows = 0;
+	int rowNbr = 0;
 
 	dtComplete
 		.Columns
@@ -1382,7 +1411,7 @@ int DTLoadIntoDifferentExcelWorkBook(string excelFilePath,
 		{
 			dtCurrent.EndLoadData();
 			dtSplits.Add(dtCurrent);
-			dtCurrent = new DataTable();
+			dtCurrent = new DataTable(dtComplete.TableName + "-Split-" + rowNbr);
 			dtComplete
 				.Columns
 				.Cast<DataColumn>()
@@ -1393,6 +1422,7 @@ int DTLoadIntoDifferentExcelWorkBook(string excelFilePath,
 
 		dtCurrent.LoadDataRow(drSource.ItemArray, LoadOption.OverwriteChanges);
 		++totalRows;
+		++rowNbr;
 	}
 
 	dtCurrent.EndLoadData();
@@ -1579,19 +1609,16 @@ void ReadCFStatsFileParseIntoDataTable(IFilePath cfstatsFilePath,
 {
 	if (dtFSStats.Columns.Count == 0)
 	{
-		dtFSStats.Columns.Add("Data Center", typeof(string));
-		dtFSStats.Columns[0].AllowDBNull = true;
+		dtFSStats.Columns.Add("Data Center", typeof(string)).AllowDBNull = true;
 		dtFSStats.Columns.Add("Node IPAdress", typeof(string));
 		dtFSStats.Columns.Add("KeySpace", typeof(string));
-		dtFSStats.Columns.Add("Table", typeof(string));
-		dtFSStats.Columns[3].AllowDBNull = true;
+		dtFSStats.Columns.Add("Table", typeof(string)).AllowDBNull = true;
 		dtFSStats.Columns.Add("Attribute", typeof(string));
 		dtFSStats.Columns.Add("Value", typeof(object));
-		dtFSStats.Columns.Add("Unit of Measure", typeof(string));
-		dtFSStats.Columns[6].AllowDBNull = true;
+		dtFSStats.Columns.Add("Unit of Measure", typeof(string)).AllowDBNull = true;
 
-		dtFSStats.Columns.Add("Size in MB", typeof(decimal));
-		dtFSStats.Columns[7].AllowDBNull = true;
+		dtFSStats.Columns.Add("Size in MB", typeof(decimal)).AllowDBNull = true;
+		dtFSStats.Columns.Add("(Value)", typeof(object));
 
 		//dtFSStats.PrimaryKey = new System.Data.DataColumn[] { dtFSStats.Columns[0],  dtFSStats.Columns[1],  dtFSStats.Columns[2],  dtFSStats.Columns[3], dtFSStats.Columns[4] };
 	}
@@ -1637,15 +1664,19 @@ void ReadCFStatsFileParseIntoDataTable(IFilePath cfstatsFilePath,
 			{
 				currentTbl = parsedLine[1];
 			}
+			else if (parsedLine[0] == "Table (index)")
+			{
+				currentTbl = parsedLine[1] + " (index)";
+			}
 			else
 			{
 				dataRow = dtFSStats.NewRow();
 
-				dataRow[0] = dcName;
-				dataRow[1] = ipAddress;
-				dataRow[2] = currentKS;
-				dataRow[3] = currentTbl;
-				dataRow[4] = parsedLine[0];
+				dataRow["Data Center"] = dcName;
+				dataRow["Node IPAdress"] = ipAddress;
+				dataRow["KeySpace"] = currentKS;
+				dataRow["Table"] = currentTbl;
+				dataRow["Attribute"] = parsedLine[0];
 
 				parsedValue = Common.StringFunctions.Split(parsedLine[1],
 															' ',
@@ -1654,11 +1685,12 @@ void ReadCFStatsFileParseIntoDataTable(IFilePath cfstatsFilePath,
 
 				if (Common.StringFunctions.ParseIntoNumeric(parsedValue[0], out numericValue, true))
 				{
-					dataRow[5] = numericValue;
+					dataRow["Value"] = numericValue;
+					dataRow["(Value)"] = ((dynamic) numericValue) < 0 ? 0 : numericValue;
 
 					if (parsedValue.Count() > 1)
 					{
-						dataRow[6] = parsedValue[1];
+						dataRow["Unit of Measure"] = parsedValue[1];
 					}
 
 					if (addToMBColumn != null)
@@ -1669,7 +1701,7 @@ void ReadCFStatsFileParseIntoDataTable(IFilePath cfstatsFilePath,
 						{
 							if (parsedLine[0].ToLower().Contains(item))
 							{
-								dataRow[7] = decNbr / BytesToMB;
+								dataRow["Size in MB"] = decNbr / BytesToMB;
 								break;
 							}
 						}
@@ -1677,7 +1709,7 @@ void ReadCFStatsFileParseIntoDataTable(IFilePath cfstatsFilePath,
 				}
 				else
 				{
-					dataRow[6] = parsedLine[1];
+					dataRow["Unit of Measure"] = parsedLine[1];
 				}
 
 				dtFSStats.Rows.Add(dataRow);
@@ -2233,6 +2265,10 @@ void ReadCassandraLogParseIntoDataTable(IFilePath clogFilePath,
 	LogCassandraMaxTimestamps.Add(maxTimestamp);
 }
 
+
+static Regex RegExCreateIndex = new Regex(@"\s*create\s+(?:custom\s*)?index\s+(.+)?\s*on\s+(.+)\s+\(\s*(?:(?:keys\(\s*(.+)\s*\))?|(?:entries\(\s*(.+)\s*\))?|(?:full\(\s*(.+)\s*\))?|(.+)?)\).*",
+										RegexOptions.IgnoreCase | RegexOptions.Compiled);
+										
 void ReadCQLDDLParseIntoDataTable(IFilePath cqlDDLFilePath,
 									string ipAdress,
 									string dcName,
@@ -2259,9 +2295,9 @@ void ReadCQLDDLParseIntoDataTable(IFilePath cqlDDLFilePath,
 		dtTable.Columns.Add("Keyspace Name", typeof(string));
 		dtTable.Columns.Add("Name", typeof(string));
 		dtTable.Columns.Add("Pritition Key", typeof(string));
-		dtTable.Columns.Add("Cluster Key", typeof(string));
-		dtTable.Columns["Cluster Key"].AllowDBNull = true;
+		dtTable.Columns.Add("Cluster Key", typeof(string)).AllowDBNull = true;
 		dtTable.Columns.Add("Compaction Strategy", typeof(string));
+		dtTable.Columns.Add("Assocated Table", typeof(string)).AllowDBNull = true;
 		dtTable.Columns.Add("DDL", typeof(string));
 		
 		dtTable.PrimaryKey = new System.Data.DataColumn[] { dtTable.Columns["Keyspace Name"], dtTable.Columns["Name"] };
@@ -2330,6 +2366,7 @@ void ReadCQLDDLParseIntoDataTable(IFilePath cqlDDLFilePath,
 				
 				if (parsedValues[0].Substring(6,9).TrimStart().ToLower() == "keyspace")
 				{
+					#region keyspace
 					parsedComponent = Common.StringFunctions.Split(parsedValues[0],
 																	' ',
 																	Common.StringFunctions.IgnoreWithinDelimiterFlag.All,
@@ -2374,10 +2411,11 @@ void ReadCQLDDLParseIntoDataTable(IFilePath cqlDDLFilePath,
 						
 						dtKeySpace.Rows.Add(dataRow);
 					}
-
+					#endregion
 				}
 				else if (parsedValues[0].Substring(6,6).TrimStart().ToLower() == "table")
 				{
+					#region table
 					//CREATE TABLE account_payables(date int, org_key text, product_type text, product_id bigint, product_update_id bigint, vendor_type text, parent_product_id bigint, parent_product_type text, parent_product_update_id bigint, user_id bigint, vendor_detail text, PRIMARY KEY((date, org_key), product_type, product_id, product_update_id, vendor_type)) WITH bloom_filter_fp_chance = 0.100000 AND caching = 'KEYS_ONLY' AND comment = '' AND dclocal_read_repair_chance = 0.100000 AND gc_grace_seconds = 864000 AND index_interval = 128 AND read_repair_chance = 0.000000 AND replicate_on_write = 'true' AND populate_io_cache_on_flush = 'false' AND default_time_to_live = 0 AND speculative_retry = '99.0PERCENTILE' AND memtable_flush_period_in_ms = 0 AND compaction =
 					//		'class': 'LeveledCompactionStrategy'
 					//AND compression =
@@ -2496,6 +2534,72 @@ void ReadCQLDDLParseIntoDataTable(IFilePath cqlDDLFilePath,
 					}
 					
 					dtTable.Rows.Add(dataRow);
+					#endregion
+				}//end of table
+				else if (parsedValues[0].Substring(6,6).TrimStart().ToLower() == "index" || parsedValues[0].Substring(6,7).TrimStart().ToLower() == "custom")
+				{
+					#region index
+					//CREATE INDEX ix_configuration_effective_from ON production_mqh_config.configuration (effective_from);
+					//CREATE INDEX ON users (phones);
+					//CREATE INDEX todo_dates ON users (KEYS(todo));
+					//CREATE CUSTOM INDEX ON users (email) USING 'path.to.the.IndexClass' WITH OPTIONS = {'storage': '/mnt/ssd/indexes/'};
+					
+					var splits = RegExCreateIndex.Split(cqlStr);
+					Tuple<string,string> indexKSTbl = null;
+					Tuple<string,string> ksTbl;
+					string indexCol = null;
+
+					if (splits.Length == 4)
+					{
+						ksTbl = SplitTableName(splits[1], currentKeySpace);
+						indexCol = splits[2];
+						indexKSTbl = new Tuple<string,string>(ksTbl.Item1, ksTbl.Item2 + "." + "ix_" + indexCol);
+					}
+					else
+					{						
+						ksTbl = SplitTableName(splits[2], currentKeySpace);
+						indexKSTbl = SplitTableName(splits[1], currentKeySpace == null ? ksTbl.Item1 : currentKeySpace);
+						indexCol = splits[3];
+					}
+					
+					if (ignoreKeySpaces.Contains(indexKSTbl.Item1))
+					{
+						continue;
+					}
+
+					dataRow = dtTable.NewRow();
+					dataRow["Keyspace Name"] = indexKSTbl.Item1;
+					dataRow["Name"] = ksTbl.Item2 + "." + indexKSTbl.Item2;
+					dataRow["DDL"] = cqlStr;
+					dataRow["Assocated Table"] = ksTbl.Item1 + "." + ksTbl.Item2;
+					
+					var assocTblRow = dtTable.Rows.Find(new object[] { ksTbl.Item1, ksTbl.Item2 });
+
+					if (assocTblRow != null)
+					{
+						dataRow["Compaction Strategy"] = assocTblRow["Compaction Strategy"];
+						
+						var cqlDDL = assocTblRow["DDL"] as string;
+
+						if (!string.IsNullOrEmpty(cqlDDL))
+						{
+							var colPos = cqlDDL.IndexOf(indexCol);
+							
+							if (colPos > 0)
+							{
+								var strCol = cqlDDL.Substring(colPos);
+								var colEndPos = strCol.IndexOfAny(new char[] { ',', ')'});
+
+								if (colEndPos > 0)
+								{
+									dataRow["Pritition Key"] = strCol.Substring(0,colEndPos);
+								}
+							}
+						}
+					}
+					
+					dtTable.Rows.Add(dataRow);
+					#endregion
 				}
 			}
 		}
