@@ -68,8 +68,8 @@ void Main()
 {
 	#region Configuration
 	//Location where this application will write or update the Excel file.
-	//var excelFilePath = @"[DeskTop]\Gamesys.xlsx"; //<==== Should be updated
-	var excelFilePath = @"[DeskTop]\Test.xlsx";
+	var excelFilePath = @"[DeskTop]\Gamesys.xlsx"; //<==== Should be updated
+	//var excelFilePath = @"[DeskTop]\test.xlsx";
 	
 	//If diagnosticNoSubFolders is false:
 	//Directory where files are located to parse DSE diagnostics files produced by DataStax OpsCenter diagnostics or a special directory structure where DSE diagnostics information is placed.
@@ -90,8 +90,8 @@ void Main()
 	//If diagnosticNoSubFolders is ture:
 	//	All diagnostic files are located directly under diagnosticPath folder. Each file should have the IP Adress either in the beginning or end of the file name.
 	//		e.g., cfstats_10.192.40.7, system-10.192.40.7.log, 10.192.40.7_system.log, etc.
-	//var diagnosticPath = @"[MyDocuments]\LINQPad Queries\DataStax\TestData\gamingactivity-diagnostics-2016_08_10_08_45_40_UTC";
-	var diagnosticPath = @"[MyDocuments]\LINQPad Queries\DataStax\TestData\production_group_v_1-diagnostics-2016_07_04_15_43_48_UTC"; 
+	var diagnosticPath = @"[MyDocuments]\LINQPad Queries\DataStax\TestData\gamingactivity-diagnostics-2016_08_10_08_45_40_UTC";
+	//var diagnosticPath = @"[MyDocuments]\LINQPad Queries\DataStax\TestData\production_group_v_1-diagnostics-2016_07_04_15_43_48_UTC"; 
 	//@"C:\Users\richard\Desktop\datastax"; 
 	var diagnosticNoSubFolders = false; //<==== Should be Updated 
 	var parseLogs = true;
@@ -148,7 +148,9 @@ void Main()
 										@".\os-metrics\load_avg.json",
 										@".\os-metrics\memory.json",
 										@".\ntp\ntpstat",
-										@".\ntp\ntptime"};
+										@".\ntp\ntptime"}; //Referenced from the node directory
+	var opsCenterDir = @".\opscenterd";
+	var opsCenterFiles = new string[] { "node_info.json" };
 
 	#endregion
 	
@@ -623,6 +625,10 @@ void Main()
 
 	var runYamlListIntoDT = Task.Run(() => ParseYamlListIntoDataTable(listCYamlStack, dtYaml));
 
+	ParseOPSCenterInfoDataTable((IDirectoryPath) diagPath.Clone().AddChild(opsCenterDir),
+								opsCenterFiles,
+								dtOSMachineInfo);
+								
 	#endregion
 
 	#region Excel Creation/Formatting
@@ -765,57 +771,80 @@ void Main()
 											//workBook.Cells["1:1"].Style.Fill.BackgroundColor.SetColor(System.Drawing.Color.LightGray);
 											workSheet.View.FreezePanes(3, 1);
 											
-											workSheet.Cells["H1:K1"].Style.WrapText = true;
-											workSheet.Cells["H1:K1"].Merge = true;
-											workSheet.Cells["H1:K1"].Value = "CPU Load (Percent)";
-											workSheet.Cells["H1:H2"].Style.Border.Left.Style = OfficeOpenXml.Style.ExcelBorderStyle.Medium;
-											workSheet.Cells["K1:K2"].Style.Border.Right.Style = OfficeOpenXml.Style.ExcelBorderStyle.Medium;
+											workSheet.Cells["J1:M1"].Style.WrapText = true;
+											workSheet.Cells["J1:M1"].Merge = true;
+											workSheet.Cells["J1:M1"].Value = "CPU Load (Percent)";
+											workSheet.Cells["J1:M2"].Style.Border.Left.Style = OfficeOpenXml.Style.ExcelBorderStyle.Medium;
+											workSheet.Cells["M1:M2"].Style.Border.Right.Style = OfficeOpenXml.Style.ExcelBorderStyle.Medium;
 
-											workSheet.Cells["L1:Q1"].Style.WrapText = true;
-											workSheet.Cells["L1:Q1"].Merge = true;
-											workSheet.Cells["L1:Q1"].Value = "Memory (MB)";
-											workSheet.Cells["L1:L2"].Style.Border.Left.Style = OfficeOpenXml.Style.ExcelBorderStyle.Medium;
-											workSheet.Cells["Q1:Q2"].Style.Border.Right.Style = OfficeOpenXml.Style.ExcelBorderStyle.Medium;
+											workSheet.Cells["N1:S1"].Style.WrapText = true;
+											workSheet.Cells["N1:S1"].Merge = true;
+											workSheet.Cells["N1:S1"].Value = "Memory (MB)";
+											workSheet.Cells["N1:N2"].Style.Border.Left.Style = OfficeOpenXml.Style.ExcelBorderStyle.Medium;
+											workSheet.Cells["S1:S2"].Style.Border.Right.Style = OfficeOpenXml.Style.ExcelBorderStyle.Medium;
 
-											workSheet.Cells["R1:U1"].Style.WrapText = true;
-											workSheet.Cells["R1:U1"].Merge = true;
-											workSheet.Cells["R1:U1"].Value = "Java";
-											workSheet.Cells["R1:R2"].Style.Border.Left.Style = OfficeOpenXml.Style.ExcelBorderStyle.Medium;
-											workSheet.Cells["U1:U2"].Style.Border.Right.Style = OfficeOpenXml.Style.ExcelBorderStyle.Dashed;
+											workSheet.Cells["T1:W1"].Style.WrapText = true;
+											workSheet.Cells["T1:W1"].Merge = true;
+											workSheet.Cells["T1:W1"].Value = "Java";
+											workSheet.Cells["T1:T2"].Style.Border.Left.Style = OfficeOpenXml.Style.ExcelBorderStyle.Medium;
+											workSheet.Cells["W1:W2"].Style.Border.Right.Style = OfficeOpenXml.Style.ExcelBorderStyle.Dashed;
 
-											workSheet.Cells["V1:Y1"].Style.WrapText = true;
-											workSheet.Cells["V1:Y1"].Merge = true;
-											workSheet.Cells["V1:Y1"].Value = "Java Non-Heap (MB)";
-											workSheet.Cells["V1:V2"].Style.Border.Left.Style = OfficeOpenXml.Style.ExcelBorderStyle.Dashed;
-											workSheet.Cells["Y1:Y2"].Style.Border.Right.Style = OfficeOpenXml.Style.ExcelBorderStyle.Dashed;
+											workSheet.Cells["X1:AA1"].Style.WrapText = true;
+											workSheet.Cells["X1:AA1"].Merge = true;
+											workSheet.Cells["X1:AA1"].Value = "Java Non-Heap (MB)";
+											workSheet.Cells["X1:X2"].Style.Border.Left.Style = OfficeOpenXml.Style.ExcelBorderStyle.Dashed;
+											workSheet.Cells["AA1:AA2"].Style.Border.Right.Style = OfficeOpenXml.Style.ExcelBorderStyle.Dashed;
 
-											workSheet.Cells["Z1:AC1"].Style.WrapText = true;
-											workSheet.Cells["Z1:AC1"].Merge = true;
-											workSheet.Cells["Z1:AC1"].Value = "Java Heap (MB)";
-											workSheet.Cells["Z1:Z2"].Style.Border.Left.Style = OfficeOpenXml.Style.ExcelBorderStyle.Dashed;
-											workSheet.Cells["AC1:AC2"].Style.Border.Right.Style = OfficeOpenXml.Style.ExcelBorderStyle.Medium;
+											workSheet.Cells["AB1:AE1"].Style.WrapText = true;
+											workSheet.Cells["AB1:AE1"].Merge = true;
+											workSheet.Cells["AB1:AE1"].Value = "Java Heap (MB)";
+											workSheet.Cells["AB1:AB2"].Style.Border.Left.Style = OfficeOpenXml.Style.ExcelBorderStyle.Dashed;
+											workSheet.Cells["AE1:AE2"].Style.Border.Right.Style = OfficeOpenXml.Style.ExcelBorderStyle.Medium;
 
-											workSheet.Cells["AD1:AK1"].Style.WrapText = true;
-											workSheet.Cells["AD1:AK1"].Merge = true;
-											workSheet.Cells["AD1:AK1"].Value = "NTP";
-											workSheet.Cells["AD1:AD2"].Style.Border.Left.Style = OfficeOpenXml.Style.ExcelBorderStyle.Medium;
-											workSheet.Cells["AK1:AK2"].Style.Border.Right.Style = OfficeOpenXml.Style.ExcelBorderStyle.Medium;
+											workSheet.Cells["AF1:AJ1"].Style.WrapText = true;
+											workSheet.Cells["AF1:AJ1"].Merge = true;
+											workSheet.Cells["AF1:AJ1"].Value = "Versions";
+											workSheet.Cells["AF1:AF2"].Style.Border.Left.Style = OfficeOpenXml.Style.ExcelBorderStyle.Medium;
+											workSheet.Cells["AJ1:AJ2"].Style.Border.Right.Style = OfficeOpenXml.Style.ExcelBorderStyle.Medium;
 
-											workSheet.Cells["D:D"].Style.Numberformat.Format = "#,###,###,##0";
-											workSheet.Cells["L:Q"].Style.Numberformat.Format = "#,###,###,##0";
-											workSheet.Cells["AD:AH"].Style.Numberformat.Format = "#,###,###,##0";
-											workSheet.Cells["H:K"].Style.Numberformat.Format = "#,###,###,##0.00";
-											workSheet.Cells["V:V"].Style.Numberformat.Format = "#,###,###,##0.00";
-											workSheet.Cells["W:W"].Style.Numberformat.Format = "#,###,###,##0.00";
+											workSheet.Cells["AK1:AR1"].Style.WrapText = true;
+											workSheet.Cells["AK1:AR1"].Merge = true;
+											workSheet.Cells["AK1:AR1"].Value = "NTP";
+											workSheet.Cells["AK1:AK2"].Style.Border.Left.Style = OfficeOpenXml.Style.ExcelBorderStyle.Medium;
+											workSheet.Cells["AR1:AR2"].Style.Border.Right.Style = OfficeOpenXml.Style.ExcelBorderStyle.Medium;
+
+											workSheet.Cells["E:E"].Style.Numberformat.Format = "#,###,###,##0";
+											workSheet.Cells["F:F"].Style.Numberformat.Format = "#,###,###,##0";
+											workSheet.Cells["N:N"].Style.Numberformat.Format = "#,###,###,##0";
+											workSheet.Cells["O:O"].Style.Numberformat.Format = "#,###,###,##0";
+											workSheet.Cells["P:P"].Style.Numberformat.Format = "#,###,###,##0";
+											workSheet.Cells["Q:Q"].Style.Numberformat.Format = "#,###,###,##0";
+											workSheet.Cells["R:R"].Style.Numberformat.Format = "#,###,###,##0";
+											workSheet.Cells["S:S"].Style.Numberformat.Format = "#,###,###,##0";
+											workSheet.Cells["AK:AK"].Style.Numberformat.Format = "#,###,###,##0";
+											workSheet.Cells["AL:AL"].Style.Numberformat.Format = "#,###,###,##0";
+											workSheet.Cells["AM:AM"].Style.Numberformat.Format = "#,###,###,##0";
+											workSheet.Cells["AN:AN"].Style.Numberformat.Format = "#,###,###,##0";
+											workSheet.Cells["AO:AO"].Style.Numberformat.Format = "#,###,###,##0";
+
+											workSheet.Cells["J:J"].Style.Numberformat.Format = "#,###,###,##0.00";
+											workSheet.Cells["K:K"].Style.Numberformat.Format = "#,###,###,##0.00";
+											workSheet.Cells["L:L"].Style.Numberformat.Format = "#,###,###,##0.00";
+											workSheet.Cells["M:M"].Style.Numberformat.Format = "#,###,###,##0.00";
 											workSheet.Cells["X:X"].Style.Numberformat.Format = "#,###,###,##0.00";
 											workSheet.Cells["Y:Y"].Style.Numberformat.Format = "#,###,###,##0.00";
 											workSheet.Cells["Z:Z"].Style.Numberformat.Format = "#,###,###,##0.00";
 											workSheet.Cells["AA:AA"].Style.Numberformat.Format = "#,###,###,##0.00";
 											workSheet.Cells["AB:AB"].Style.Numberformat.Format = "#,###,###,##0.00";
 											workSheet.Cells["AC:AC"].Style.Numberformat.Format = "#,###,###,##0.00";
-											workSheet.Cells["AI:AK"].Style.Numberformat.Format = "#,###,###,##0.00";
-											
-											workSheet.Cells["A2:AK2"].AutoFilter = true;
+											workSheet.Cells["AC:AC"].Style.Numberformat.Format = "#,###,###,##0.00";
+											workSheet.Cells["AD:AD"].Style.Numberformat.Format = "#,###,###,##0.00";
+											workSheet.Cells["AE:AE"].Style.Numberformat.Format = "#,###,###,##0.00";
+											workSheet.Cells["AP:AP"].Style.Numberformat.Format = "#,###,###,##0.00";
+											workSheet.Cells["AQ:AQ"].Style.Numberformat.Format = "#,###,###,##0.00";
+											workSheet.Cells["AR:AR"].Style.Numberformat.Format = "#,###,###,##0.00";
+
+											workSheet.Cells["A2:AR2"].AutoFilter = true;
 											workSheet.Cells.AutoFitColumns();
 										},
 										null,
@@ -874,7 +903,7 @@ void Main()
 											workSheet.Cells["G:G"].Style.Numberformat.Format = "#,###,###,##0.00";
 											workSheet.Cells["H:H"].Style.Numberformat.Format = "#,###,###,##0";
 											workSheet.Cells["I:I"].Style.Numberformat.Format = "#,###,###,##0.00";
-											workSheet.Cells["J1"].AddComment("The notation means {tables:rows}. For example {1:3, 3:1} means 3 rows were taken from one sstable (1:3) and 1 row taken from 3 (3:1) sstables, all to make the one sstable in that compaction operation.", "Rich Andersen");
+											workSheet.Cells["K1"].AddComment("The notation means {tables:rows}. For example {1:3, 3:1} means 3 rows were taken from one sstable (1:3) and 1 row taken from 3 (3:1) sstables, all to make the one sstable in that compaction operation.", "Rich Andersen");
 
 											workSheet.View.FreezePanes(2, 1);
 											workSheet.Cells["A1:J1"].AutoFilter = true;
@@ -3741,48 +3770,57 @@ void ParseOSMachineInfoDataTable(IDirectoryPath directoryPath,
 		dtOSMachineInfo.PrimaryKey = new System.Data.DataColumn[] { dtOSMachineInfo.Columns["Node IPAdress"] };
 		dtOSMachineInfo.Columns.Add("DataCenter", typeof(string)).AllowDBNull = true;
 		
+		dtOSMachineInfo.Columns.Add("Instance Type", typeof(string)).AllowDBNull = true;//c
 		dtOSMachineInfo.Columns.Add("CPU Architecture", typeof(string));
-		dtOSMachineInfo.Columns.Add("Physical Memory (MB)", typeof(int));
+		dtOSMachineInfo.Columns.Add("Cores", typeof(int)).AllowDBNull = true; //e
+		dtOSMachineInfo.Columns.Add("Physical Memory (MB)", typeof(int)); //f
 		dtOSMachineInfo.Columns.Add("OS", typeof(string));
 		dtOSMachineInfo.Columns.Add("OS Version", typeof(string));
 		dtOSMachineInfo.Columns.Add("TimeZone", typeof(string));
 		//CPU Load
-		dtOSMachineInfo.Columns.Add("Average", typeof(decimal)); //h
+		dtOSMachineInfo.Columns.Add("Average", typeof(decimal)); //j
 		dtOSMachineInfo.Columns.Add("Idle", typeof(decimal));
 		dtOSMachineInfo.Columns.Add("System", typeof(decimal));
-		dtOSMachineInfo.Columns.Add("User", typeof(decimal)); //k
+		dtOSMachineInfo.Columns.Add("User", typeof(decimal)); //m
 		//Memory
-		dtOSMachineInfo.Columns.Add("Available", typeof(int)); //l
+		dtOSMachineInfo.Columns.Add("Available", typeof(int)); //n
 		dtOSMachineInfo.Columns.Add("Cache", typeof(int));
 		dtOSMachineInfo.Columns.Add("Buffers", typeof(int));
 		dtOSMachineInfo.Columns.Add("Shared", typeof(int));
 		dtOSMachineInfo.Columns.Add("Free", typeof(int));
-		dtOSMachineInfo.Columns.Add("Used", typeof(int)); //q
+		dtOSMachineInfo.Columns.Add("Used", typeof(int)); //s
 		//Java
-		dtOSMachineInfo.Columns.Add("Vendor", typeof(string));//r
+		dtOSMachineInfo.Columns.Add("Vendor", typeof(string));//t
 		dtOSMachineInfo.Columns.Add("Model", typeof(string));
 		dtOSMachineInfo.Columns.Add("Runtime Name", typeof(string));
-		dtOSMachineInfo.Columns.Add("Runtime Version", typeof(string));//u
+		dtOSMachineInfo.Columns.Add("Runtime Version", typeof(string));//w
 		//Java NonHeapMemoryUsage
-		dtOSMachineInfo.Columns.Add("Non-Heap Committed", typeof(decimal)); //v
+		dtOSMachineInfo.Columns.Add("Non-Heap Committed", typeof(decimal)); //x
 		dtOSMachineInfo.Columns.Add("Non-Heap Init", typeof(decimal));
-		dtOSMachineInfo.Columns.Add("Non-Heap Max", typeof(decimal));
-		dtOSMachineInfo.Columns.Add("Non-Heap Used", typeof(decimal));//y
+		dtOSMachineInfo.Columns.Add("Non-Heap Max", typeof(decimal));//z
+		dtOSMachineInfo.Columns.Add("Non-Heap Used", typeof(decimal));//aa
 		//Javaa HeapMemoryUsage
-		dtOSMachineInfo.Columns.Add("Heap Committed", typeof(decimal)); //z
-		dtOSMachineInfo.Columns.Add("Heap Init", typeof(decimal)); //aa
-		dtOSMachineInfo.Columns.Add("Heap Max", typeof(decimal)); //ab
-		dtOSMachineInfo.Columns.Add("Heap Used", typeof(decimal)); //ac
+		dtOSMachineInfo.Columns.Add("Heap Committed", typeof(decimal)); //ab
+		dtOSMachineInfo.Columns.Add("Heap Init", typeof(decimal)); //ac
+		dtOSMachineInfo.Columns.Add("Heap Max", typeof(decimal)); //ad
+		dtOSMachineInfo.Columns.Add("Heap Used", typeof(decimal)); //ae
 
+		//DataStax Versions
+		dtOSMachineInfo.Columns.Add("DSE", typeof(string)).AllowDBNull = true; //af
+		dtOSMachineInfo.Columns.Add("Cassandra", typeof(string)).AllowDBNull = true;
+		dtOSMachineInfo.Columns.Add("Search", typeof(string)).AllowDBNull = true;
+		dtOSMachineInfo.Columns.Add("Spark", typeof(string)).AllowDBNull = true;//ai
+		dtOSMachineInfo.Columns.Add("VNodes", typeof(bool)).AllowDBNull = true; //aj
+		
 		//NTP
-		dtOSMachineInfo.Columns.Add("Correction (ms)", typeof(int)); //ad
+		dtOSMachineInfo.Columns.Add("Correction (ms)", typeof(int)); //ak
 		dtOSMachineInfo.Columns.Add("Polling (secs)", typeof(int));
 		dtOSMachineInfo.Columns.Add("Maximum Error (us)", typeof(int));
 		dtOSMachineInfo.Columns.Add("Estimated Error (us)", typeof(int));
-		dtOSMachineInfo.Columns.Add("Time Constant", typeof(int)); //ah
-		dtOSMachineInfo.Columns.Add("Precision (us)", typeof(decimal)); //ai
+		dtOSMachineInfo.Columns.Add("Time Constant", typeof(int)); //ao
+		dtOSMachineInfo.Columns.Add("Precision (us)", typeof(decimal)); //ap
 		dtOSMachineInfo.Columns.Add("Frequency (ppm)", typeof(decimal));
-		dtOSMachineInfo.Columns.Add("Tolerance (ppm)", typeof(decimal)); //ak
+		dtOSMachineInfo.Columns.Add("Tolerance (ppm)", typeof(decimal)); //ar
 	}
 
 	var dataRow = dtOSMachineInfo.NewRow();
@@ -3846,12 +3884,17 @@ void ParseOSMachineInfoDataTable(IDirectoryPath directoryPath,
 					dataRow["Runtime Version"] = infoObject["java.runtime.version"];
 					dataRow["TimeZone"] = ((string)infoObject["user.timezone"])
 											.Replace((string) infoObject["file.separator"], "/");
+
+					if (infoObject.ContainsKey("dse.system_cpu_cores"))
+					{
+						dataRow["Cores"] = infoObject["dse.system_cpu_cores"];
+					}
 				}
 				else if (fileName.Contains("java_heap"))
 				{
 					var infoObject = ParseJson(filePath.ReadAllText());
-					var nonHeapJson = ParseJson((string) infoObject["NonHeapMemoryUsage"]);
-					var heapJson = ParseJson((string) infoObject["HeapMemoryUsage"]);
+					var nonHeapJson = (Dictionary<string,object>) infoObject["NonHeapMemoryUsage"];
+					var heapJson = (Dictionary<string,object>) infoObject["HeapMemoryUsage"];
 					
 					//Java NonHeapMemoryUsage
 					dataRow["Non-Heap Committed"] = ((dynamic) (nonHeapJson["committed"])) / BytesToMB;
@@ -3932,7 +3975,61 @@ void ParseOSMachineInfoDataTable(IDirectoryPath directoryPath,
 	}
 }
 
+void ParseOPSCenterInfoDataTable(IDirectoryPath directoryPath,
+									string[] ospCenterFiles,
+									DataTable dtOSMachineInfo)
+{
+	if (dtOSMachineInfo.Rows.Count <= 0)
+	{
+		return;
+	}
 
+	foreach (var fileName in ospCenterFiles)
+	{
+		IFilePath filePath;
+
+		if (directoryPath.Clone().MakeFile(fileName, out filePath))
+		{
+			if (filePath.Exist())
+			{
+				if (fileName.Contains("node_info"))
+				{
+					var infoObject = ParseJson(filePath.ReadAllText());
+					var nodeInfoDict = (Dictionary<string,object>) infoObject;
+					
+					foreach (DataRow dataRow in dtOSMachineInfo.Rows)
+					{
+						if (nodeInfoDict.ContainsKey((string)dataRow["Node IPAdress"]))
+						{
+							var nodeInfo = (Dictionary<string,object>) nodeInfoDict[(string)dataRow["Node IPAdress"]];
+							var dseVersions = (Dictionary<string,object>) nodeInfo["node_version"];
+							
+							dataRow.BeginEdit();
+							
+							dataRow["Instance Type"] = nodeInfo
+														.Where(i => i.Value is Dictionary<string,object>)
+														.Where(i => ((Dictionary<string,object>)i.Value).ContainsKey("instance-type"))
+														.Select(i => NonNullValue(((Dictionary<string,object>)i.Value)["instance-type"], i.Key) )
+														.FirstOrDefault();
+
+							if (dataRow["Cores"] == DBNull.Value)
+							{
+								dataRow["Cores"] = nodeInfo["num_procs"];
+							}
+							dataRow["DSE"] = dseVersions["dse"];
+							dataRow["Cassandra"] = dseVersions["cassandra"];
+							dataRow["Search"] = dseVersions["search"];
+							dataRow["Spark"] = ((Dictionary<string,object>)dseVersions["spark"])["version"];
+							dataRow["VNodes"] = nodeInfo["vnodes"];
+							
+							dataRow.EndEdit();
+						}
+					}
+				}
+			}
+		}
+	}
+}
 
 #endregion
 
@@ -4172,6 +4269,11 @@ string DetermineProperFormat(string strValue, bool ignoreBraces = false, bool re
 		return strValue;
 	}
 
+	if (strValue == "null")
+	{
+		return null;
+	}
+
 	if (strValue[0] == '"')
 	{
 		var splitItems = strValue.Substring(1, strValue.Length - 2).Split(',');
@@ -4221,6 +4323,11 @@ object DetermineProperObjectFormat(string strValue, bool ignoreBraces = false, b
 	if (strValue == string.Empty)
 	{
 		return strValue;
+	}
+
+	if (strValue == "null")
+	{
+		return null;
 	}
 
 	if (strValue[0] == '"')
@@ -4298,7 +4405,7 @@ Dictionary<string, object> ParseJson(string strJson)
 
 	var keyValuePair = StringFunctions.Split(strJson,
 												new char[] { ':', ','},
-												StringFunctions.IgnoreWithinDelimiterFlag.Text | Common.StringFunctions.IgnoreWithinDelimiterFlag.Brace,
+												StringFunctions.IgnoreWithinDelimiterFlag.Text | Common.StringFunctions.IgnoreWithinDelimiterFlag.Brace | Common.StringFunctions.IgnoreWithinDelimiterFlag.Bracket,
 												StringFunctions.SplitBehaviorOptions.RemoveEmptyEntries | Common.StringFunctions.SplitBehaviorOptions.StringTrimEachElement);
 												
 	var jsonDict = new Dictionary<string, object>();
@@ -4306,10 +4413,65 @@ Dictionary<string, object> ParseJson(string strJson)
 	for (int nIndex = 0; nIndex < keyValuePair.Count; ++nIndex)
 	{
 		jsonDict.Add(RemoveQuotes(keyValuePair[nIndex].Trim()).Trim(),
-						DetermineProperObjectFormat(RemoveQuotes(keyValuePair[++nIndex]), true, false));
+						ParseJsonValue(keyValuePair[++nIndex]));
 	}
 	
 	return jsonDict;
+}
+
+object ParseJsonValue(string jsonValue)
+{
+	if (string.IsNullOrEmpty(jsonValue))
+	{
+		return jsonValue;
+	}
+	
+	jsonValue = RemoveQuotes(jsonValue.Trim());
+
+	if (jsonValue == string.Empty)
+	{
+		return jsonValue;
+	}
+	
+	if (jsonValue.Length > 2)
+	{
+		var endPos = jsonValue.Length - 1;
+
+		if (endPos >= 2)
+		{
+			if (jsonValue[0] == '[')
+			{
+				if (jsonValue[endPos] == ']')
+				{
+					var arrayValues = StringFunctions.Split(jsonValue.Substring(1, endPos - 1),
+																',',
+																StringFunctions.IgnoreWithinDelimiterFlag.Text | Common.StringFunctions.IgnoreWithinDelimiterFlag.Brace | Common.StringFunctions.IgnoreWithinDelimiterFlag.Bracket,
+																StringFunctions.SplitBehaviorOptions.RemoveEmptyEntries | Common.StringFunctions.SplitBehaviorOptions.StringTrimEachElement);
+					var array = new object[arrayValues.Count];
+
+					for (int nIndex = 0; nIndex < array.Length; ++nIndex)
+					{
+						array[nIndex] = ParseJsonValue(arrayValues[nIndex]);
+					}					
+					return array;
+				}
+			}
+			else if (jsonValue[0] == '{')
+			{
+				if (jsonValue[endPos] == '}')
+				{
+					return ParseJson(jsonValue.Substring(1, endPos - 1));
+				}
+			}
+		}
+	}
+	
+	return DetermineProperObjectFormat(jsonValue, true, false);
+}
+
+object NonNullValue(object o1, object o2)
+{
+	return o1 == null ? o2 : o1;
 }
 
 #endregion
