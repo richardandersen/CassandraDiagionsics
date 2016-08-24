@@ -38,7 +38,7 @@ static TimeSpan LogTimeSpanRange = new TimeSpan(2, 0, 0, 0); //Only import log e
 static DateTime LogCurrentDate = DateTime.MinValue; //DateTime.Now.Date; //If DateTime.MinValue all log entries are parsed
 static int LogMaxRowsPerNode = -1; // -1 disabled
 static string[] LogSummaryIndicatorType = new string[] { "WARN", "ERROR" };
-static string[] LogSummaryTaskItems = new string[] { "SliceQueryFilter.java", "BatchStatement.java", "CompactionController.java", "HintedHandoffMetrics.java", "GCInspector.java" };
+static string[] LogSummaryTaskItems = new string[] { "SliceQueryFilter.java", "BatchStatement.java", "CompactionController.java", "HintedHandoffMetrics.java", "GCInspector.java", "MessagingService.java" };
 static string[] LogSummaryIgnoreTaskExceptions = new string[] { };
 static Tuple<DateTime, TimeSpan>[] LogSummaryPeriods = null; //new Tuple<DateTime, TimeSpan>[] { new Tuple<DateTime,TimeSpan>(new DateTime(2016, 08, 02), new TimeSpan(0, 0, 30, 0)), //From By date/time and aggregation period
 																						 //new Tuple<DateTime,TimeSpan>(new DateTime(2016, 08, 1, 0, 0, 0), new TimeSpan(0, 1, 0, 0)),
@@ -50,7 +50,7 @@ static Tuple<TimeSpan, TimeSpan>[] LogSummaryPeriodRanges = new Tuple<TimeSpan, 
 //Creates a filter that is used for loading the Cassandra Log Worksheets
 // Data Columns are:
 //	[Data Center], string, AllowDBNull
-//	[Node IPAdress], string
+//	[Node IPAddress], string
 //	[Timestamp], DateTime
 //	[Indicator], string (e.g., INFO, WARN, ERROR)
 //	[Task], string (e.g., ReadStage, CompactionExecutor)
@@ -77,7 +77,7 @@ void Main()
 	//Directory where files are located to parse DSE diagnostics files produced by DataStax OpsCenter diagnostics or a special directory structure where DSE diagnostics information is placed.
 	//If the "special" directory is used it must follow the following structure:
 	// <MySpecialFolder> -- this is the location used for the diagnosticPath variable
-	//    |- <DSENodeIPAddress> (the IPAdress must be located at the beginning or the end of the folder name) e.g., 10.0.0.1, 10.0.0.1-DC1, Diag-10.0.0.1
+	//    |- <DSENodeIPAddress> (the IPAddress must be located at the beginning or the end of the folder name) e.g., 10.0.0.1, 10.0.0.1-DC1, Diag-10.0.0.1
 	//	  |       | - nodetool -- static folder name
 	//	  |  	  |	     | - cfstats 	-- This must be the output file from nodetool cfstats (static name)
 	//	  |  	  |		 | - ring		-- This must be the output file from nodetool ring (static name)
@@ -87,7 +87,7 @@ void Main()
 	//	  |  	  | - logs -- static folder name
 	//	  |       | 	| - cassandra -- static folder name
 	//	  |  				    | - system.log -- This must be the cassandra log file from the node
-	//    | - <NextDSENodeIPAdress> -- e.g., 10.0.0.2, 10.0.0.2-DC1, Diag-10.0.0.2
+	//    | - <NextDSENodeIPAddress> -- e.g., 10.0.0.2, 10.0.0.2-DC1, Diag-10.0.0.2
 	//
 	//If diagnosticNoSubFolders is ture:
 	//	All diagnostic files are located directly under diagnosticPath folder. Each file should have the IP Adress either in the beginning or end of the file name.
@@ -175,6 +175,7 @@ void Main()
 	var listCYamlStack = new Common.Patterns.Collections.LockFree.Stack<List<YamlInfo>>();
 	var dtYaml = new System.Data.DataTable(excelWorkSheetYaml);
 	var dtOSMachineInfo = new System.Data.DataTable(excelWorkSheetOSMachineInfo);
+	var nodeGCInfo = new Common.Patterns.Collections.ThreadSafe.Dictionary<string,string>();
 
 	var includeLogEntriesAfterThisTimeFrame = LogCurrentDate == DateTime.MinValue ? DateTime.MinValue : LogCurrentDate - LogTimeSpanRange;
 	
@@ -357,6 +358,7 @@ void Main()
 							dtLogStatusStack.Push(dtStatusLog);
 							ParseCassandraLogIntoStatusLogDataTable(dtLog,
 																	dtStatusLog,
+																	nodeGCInfo,
 																	ipAddress,
 																	dcName,
 																	ignoreKeySpaces);
@@ -577,6 +579,7 @@ void Main()
 							dtLogStatusStack.Push(dtStatusLog);
 							ParseCassandraLogIntoStatusLogDataTable(dtLog,
 																	dtStatusLog,
+																	nodeGCInfo,
 																	ipAddress,
 																	dcName,
 																	ignoreKeySpaces);
@@ -628,9 +631,20 @@ void Main()
 
 	var runYamlListIntoDT = Task.Run(() => ParseYamlListIntoDataTable(listCYamlStack, dtYaml));
 
-	ParseOPSCenterInfoDataTable((IDirectoryPath) diagPath.Clone().AddChild(opsCenterDir),
-								opsCenterFiles,
-								dtOSMachineInfo);
+	var updateRingWYamlInfo = Task.Run(() =>
+		{
+			ParseOPSCenterInfoDataTable((IDirectoryPath)diagPath.Clone().AddChild(opsCenterDir),
+											opsCenterFiles,
+											dtOSMachineInfo);
+
+			UpdateMachineInfo(dtOSMachineInfo,
+								nodeGCInfo);
+								
+			runYamlListIntoDT.Wait();
+			
+			UpdateRingInfo(dtRingInfo,
+							dtYaml);
+		});
 
 	#endregion
 
@@ -722,7 +736,7 @@ void Main()
 												   new Tuple<string, string, DataViewRowState>(null,
 												   												"[Data Center], [Timestamp] DESC",
 																								DataViewRowState.CurrentRows));
-}
+		}
 		
 	});
 
@@ -732,30 +746,7 @@ void Main()
 		var excelFile = Common.Path.PathUtils.BuildFilePath(excelFilePath).FileInfo();
 		using (var excelPkg = new ExcelPackage(excelFile))
 		{
-			//Ring
-			if (dtRingInfo.Rows.Count > 0)
-			{
-				DTLoadIntoExcelWorkBook(excelPkg,
-											excelWorkSheetRingInfo,
-											dtRingInfo,
-											workSheet =>
-											{
-												workSheet.Cells["1:1"].Style.Fill.PatternType = OfficeOpenXml.Style.ExcelFillStyle.LightGray;
-												workSheet.Cells["1:1"].Style.HorizontalAlignment = OfficeOpenXml.Style.ExcelHorizontalAlignment.Center;
-												//workSheet.Cells["1:1"].Style.Fill.BackgroundColor.SetColor(System.Drawing.Color.LightGray);
-												workSheet.View.FreezePanes(2, 1);
-												workSheet.Cells["A1:M1"].AutoFilter = true;
-												workSheet.Cells["F:F"].Style.Numberformat.Format = "#,###,###,##0.00";
-												workSheet.Cells["J:J"].Style.Numberformat.Format = "#,###,###,##0.00";
-												workSheet.Cells["G:G"].Style.Numberformat.Format = "##0.00%";
-												workSheet.Cells["K:K"].Style.Numberformat.Format = "#,###,###,##0";
-												workSheet.Cells["L:L"].Style.Numberformat.Format = "#,###,###,##0";
-												workSheet.Cells["H:H"].Style.Numberformat.Format = "d hh:mm";
-
-												workSheet.Cells.AutoFitColumns();
-											});
-			}
-
+			
 			//TokenRing
 			if (dtTokenRange.Rows.Count > 0)
 			{
@@ -774,99 +765,6 @@ void Main()
 											workSheet.Cells["F:F"].Style.Numberformat.Format = "#,###,###,##0.00";
 											workSheet.Cells.AutoFitColumns();
 										});
-			}
-
-			//OS/Machine Indo
-			if (dtOSMachineInfo.Rows.Count > 0)
-			{
-				DTLoadIntoExcelWorkBook(excelPkg,
-										excelWorkSheetOSMachineInfo,
-										dtOSMachineInfo,
-										workSheet =>
-										{
-											workSheet.Cells["1:2"].Style.Fill.PatternType = OfficeOpenXml.Style.ExcelFillStyle.LightGray;
-											workSheet.Cells["1:2"].Style.HorizontalAlignment = OfficeOpenXml.Style.ExcelHorizontalAlignment.Center;
-											//workBook.Cells["1:1"].Style.Fill.BackgroundColor.SetColor(System.Drawing.Color.LightGray);
-											workSheet.View.FreezePanes(3, 1);
-											
-											workSheet.Cells["J1:M1"].Style.WrapText = true;
-											workSheet.Cells["J1:M1"].Merge = true;
-											workSheet.Cells["J1:M1"].Value = "CPU Load (Percent)";
-											workSheet.Cells["J1:M2"].Style.Border.Left.Style = OfficeOpenXml.Style.ExcelBorderStyle.Medium;
-											workSheet.Cells["M1:M2"].Style.Border.Right.Style = OfficeOpenXml.Style.ExcelBorderStyle.Medium;
-
-											workSheet.Cells["N1:S1"].Style.WrapText = true;
-											workSheet.Cells["N1:S1"].Merge = true;
-											workSheet.Cells["N1:S1"].Value = "Memory (MB)";
-											workSheet.Cells["N1:N2"].Style.Border.Left.Style = OfficeOpenXml.Style.ExcelBorderStyle.Medium;
-											workSheet.Cells["S1:S2"].Style.Border.Right.Style = OfficeOpenXml.Style.ExcelBorderStyle.Medium;
-
-											workSheet.Cells["T1:W1"].Style.WrapText = true;
-											workSheet.Cells["T1:W1"].Merge = true;
-											workSheet.Cells["T1:W1"].Value = "Java";
-											workSheet.Cells["T1:T2"].Style.Border.Left.Style = OfficeOpenXml.Style.ExcelBorderStyle.Medium;
-											workSheet.Cells["W1:W2"].Style.Border.Right.Style = OfficeOpenXml.Style.ExcelBorderStyle.Dashed;
-
-											workSheet.Cells["X1:AA1"].Style.WrapText = true;
-											workSheet.Cells["X1:AA1"].Merge = true;
-											workSheet.Cells["X1:AA1"].Value = "Java Non-Heap (MB)";
-											workSheet.Cells["X1:X2"].Style.Border.Left.Style = OfficeOpenXml.Style.ExcelBorderStyle.Dashed;
-											workSheet.Cells["AA1:AA2"].Style.Border.Right.Style = OfficeOpenXml.Style.ExcelBorderStyle.Dashed;
-
-											workSheet.Cells["AB1:AE1"].Style.WrapText = true;
-											workSheet.Cells["AB1:AE1"].Merge = true;
-											workSheet.Cells["AB1:AE1"].Value = "Java Heap (MB)";
-											workSheet.Cells["AB1:AB2"].Style.Border.Left.Style = OfficeOpenXml.Style.ExcelBorderStyle.Dashed;
-											workSheet.Cells["AE1:AE2"].Style.Border.Right.Style = OfficeOpenXml.Style.ExcelBorderStyle.Medium;
-
-											workSheet.Cells["AF1:AJ1"].Style.WrapText = true;
-											workSheet.Cells["AF1:AJ1"].Merge = true;
-											workSheet.Cells["AF1:AJ1"].Value = "Versions";
-											workSheet.Cells["AF1:AF2"].Style.Border.Left.Style = OfficeOpenXml.Style.ExcelBorderStyle.Medium;
-											workSheet.Cells["AJ1:AJ2"].Style.Border.Right.Style = OfficeOpenXml.Style.ExcelBorderStyle.Medium;
-
-											workSheet.Cells["AK1:AR1"].Style.WrapText = true;
-											workSheet.Cells["AK1:AR1"].Merge = true;
-											workSheet.Cells["AK1:AR1"].Value = "NTP";
-											workSheet.Cells["AK1:AK2"].Style.Border.Left.Style = OfficeOpenXml.Style.ExcelBorderStyle.Medium;
-											workSheet.Cells["AR1:AR2"].Style.Border.Right.Style = OfficeOpenXml.Style.ExcelBorderStyle.Medium;
-
-											workSheet.Cells["E:E"].Style.Numberformat.Format = "#,###,###,##0";
-											workSheet.Cells["F:F"].Style.Numberformat.Format = "#,###,###,##0";
-											workSheet.Cells["N:N"].Style.Numberformat.Format = "#,###,###,##0";
-											workSheet.Cells["O:O"].Style.Numberformat.Format = "#,###,###,##0";
-											workSheet.Cells["P:P"].Style.Numberformat.Format = "#,###,###,##0";
-											workSheet.Cells["Q:Q"].Style.Numberformat.Format = "#,###,###,##0";
-											workSheet.Cells["R:R"].Style.Numberformat.Format = "#,###,###,##0";
-											workSheet.Cells["S:S"].Style.Numberformat.Format = "#,###,###,##0";
-											workSheet.Cells["AK:AK"].Style.Numberformat.Format = "#,###,###,##0";
-											workSheet.Cells["AL:AL"].Style.Numberformat.Format = "#,###,###,##0";
-											workSheet.Cells["AM:AM"].Style.Numberformat.Format = "#,###,###,##0";
-											workSheet.Cells["AN:AN"].Style.Numberformat.Format = "#,###,###,##0";
-											workSheet.Cells["AO:AO"].Style.Numberformat.Format = "#,###,###,##0";
-
-											workSheet.Cells["J:J"].Style.Numberformat.Format = "#,###,###,##0.00";
-											workSheet.Cells["K:K"].Style.Numberformat.Format = "#,###,###,##0.00";
-											workSheet.Cells["L:L"].Style.Numberformat.Format = "#,###,###,##0.00";
-											workSheet.Cells["M:M"].Style.Numberformat.Format = "#,###,###,##0.00";
-											workSheet.Cells["X:X"].Style.Numberformat.Format = "#,###,###,##0.00";
-											workSheet.Cells["Y:Y"].Style.Numberformat.Format = "#,###,###,##0.00";
-											workSheet.Cells["Z:Z"].Style.Numberformat.Format = "#,###,###,##0.00";
-											workSheet.Cells["AA:AA"].Style.Numberformat.Format = "#,###,###,##0.00";
-											workSheet.Cells["AB:AB"].Style.Numberformat.Format = "#,###,###,##0.00";
-											workSheet.Cells["AC:AC"].Style.Numberformat.Format = "#,###,###,##0.00";
-											workSheet.Cells["AC:AC"].Style.Numberformat.Format = "#,###,###,##0.00";
-											workSheet.Cells["AD:AD"].Style.Numberformat.Format = "#,###,###,##0.00";
-											workSheet.Cells["AE:AE"].Style.Numberformat.Format = "#,###,###,##0.00";
-											workSheet.Cells["AP:AP"].Style.Numberformat.Format = "#,###,###,##0.00";
-											workSheet.Cells["AQ:AQ"].Style.Numberformat.Format = "#,###,###,##0.00";
-											workSheet.Cells["AR:AR"].Style.Numberformat.Format = "#,###,###,##0.00";
-
-											workSheet.Cells["A2:AR2"].AutoFilter = true;
-											workSheet.Cells.AutoFitColumns();
-										},
-										null,
-										"A2");
 			}
 
 			//CFStats
@@ -888,7 +786,8 @@ void Main()
 											workSheet.Cells.AutoFitColumns();
 										},
 										false,
-										-1);
+										-1,
+										new Tuple<string,string,DataViewRowState>(null, "[Data Center], [Node IPAddress], [KeySpace], [Table]", DataViewRowState.CurrentRows));
 
 			//TPStats
 			DTLoadIntoExcelWorkBook(excelPkg,
@@ -906,7 +805,8 @@ void Main()
 											workSheet.Cells.AutoFitColumns();
 										},
 										false,
-										-1);
+										-1,
+										new Tuple<string,string,DataViewRowState>(null, "[Data Center], [Node IPAddress]", DataViewRowState.CurrentRows));
 
 			//Compacation History
 			DTLoadIntoExcelWorkBook(excelPkg,
@@ -966,6 +866,123 @@ void Main()
 
 			//Yaml
 			runYamlListIntoDT.Wait();
+			updateRingWYamlInfo.Wait();
+			
+			//Ring
+			if (dtRingInfo.Rows.Count > 0)
+			{
+				DTLoadIntoExcelWorkBook(excelPkg,
+											excelWorkSheetRingInfo,
+											dtRingInfo,
+											workSheet =>
+											{
+												workSheet.Cells["1:1"].Style.Fill.PatternType = OfficeOpenXml.Style.ExcelFillStyle.LightGray;
+												workSheet.Cells["1:1"].Style.HorizontalAlignment = OfficeOpenXml.Style.ExcelHorizontalAlignment.Center;
+												//workSheet.Cells["1:1"].Style.Fill.BackgroundColor.SetColor(System.Drawing.Color.LightGray);
+												workSheet.View.FreezePanes(2, 1);
+												workSheet.Cells["A1:N1"].AutoFilter = true;
+												workSheet.Cells["G:G"].Style.Numberformat.Format = "#,###,###,##0.00";
+												workSheet.Cells["K:K"].Style.Numberformat.Format = "#,###,###,##0.00";
+												workSheet.Cells["H:H"].Style.Numberformat.Format = "##0.00%";
+												workSheet.Cells["L:L"].Style.Numberformat.Format = "#,###,###,##0";
+												workSheet.Cells["M:M"].Style.Numberformat.Format = "#,###,###,##0";
+												workSheet.Cells["I:I"].Style.Numberformat.Format = "d hh:mm";
+
+												workSheet.Cells.AutoFitColumns();
+											});
+			}
+
+			//OS/Machine Indo
+			if (dtOSMachineInfo.Rows.Count > 0)
+			{
+				DTLoadIntoExcelWorkBook(excelPkg,
+										excelWorkSheetOSMachineInfo,
+										dtOSMachineInfo,
+										workSheet =>
+										{
+											workSheet.Cells["1:2"].Style.Fill.PatternType = OfficeOpenXml.Style.ExcelFillStyle.LightGray;
+											workSheet.Cells["1:2"].Style.HorizontalAlignment = OfficeOpenXml.Style.ExcelHorizontalAlignment.Center;
+											//workBook.Cells["1:1"].Style.Fill.BackgroundColor.SetColor(System.Drawing.Color.LightGray);
+											workSheet.View.FreezePanes(3, 1);
+
+											workSheet.Cells["J1:M1"].Style.WrapText = true;
+											workSheet.Cells["J1:M1"].Merge = true;
+											workSheet.Cells["J1:M1"].Value = "CPU Load (Percent)";
+											workSheet.Cells["J1:M2"].Style.Border.Left.Style = OfficeOpenXml.Style.ExcelBorderStyle.Medium;
+											workSheet.Cells["M1:M2"].Style.Border.Right.Style = OfficeOpenXml.Style.ExcelBorderStyle.Medium;
+
+											workSheet.Cells["N1:S1"].Style.WrapText = true;
+											workSheet.Cells["N1:S1"].Merge = true;
+											workSheet.Cells["N1:S1"].Value = "Memory (MB)";
+											workSheet.Cells["N1:N2"].Style.Border.Left.Style = OfficeOpenXml.Style.ExcelBorderStyle.Medium;
+											workSheet.Cells["S1:S2"].Style.Border.Right.Style = OfficeOpenXml.Style.ExcelBorderStyle.Medium;
+
+											workSheet.Cells["T1:X1"].Style.WrapText = true;
+											workSheet.Cells["T1:X1"].Merge = true;
+											workSheet.Cells["T1:X1"].Value = "Java";
+											workSheet.Cells["T1:T2"].Style.Border.Left.Style = OfficeOpenXml.Style.ExcelBorderStyle.Medium;
+											workSheet.Cells["X1:X2"].Style.Border.Right.Style = OfficeOpenXml.Style.ExcelBorderStyle.Dashed;
+
+											workSheet.Cells["AA1:AB1"].Style.WrapText = true;
+											workSheet.Cells["AA1:AB1"].Merge = true;
+											workSheet.Cells["AA1:AB1"].Value = "Java Non-Heap (MB)";
+											workSheet.Cells["AA1:AA2"].Style.Border.Left.Style = OfficeOpenXml.Style.ExcelBorderStyle.Dashed;
+											workSheet.Cells["AB1:AB2"].Style.Border.Right.Style = OfficeOpenXml.Style.ExcelBorderStyle.Dashed;
+
+											workSheet.Cells["AC1:AD1"].Style.WrapText = true;
+											workSheet.Cells["AC1:AD1"].Merge = true;
+											workSheet.Cells["AC1:AD1"].Value = "Java Heap (MB)";
+											workSheet.Cells["AC1:AC2"].Style.Border.Left.Style = OfficeOpenXml.Style.ExcelBorderStyle.Dashed;
+											workSheet.Cells["AF1:AF2"].Style.Border.Right.Style = OfficeOpenXml.Style.ExcelBorderStyle.Medium;
+
+											workSheet.Cells["AG1:AK1"].Style.WrapText = true;
+											workSheet.Cells["AG1:AK1"].Merge = true;
+											workSheet.Cells["AG1:AK1"].Value = "Versions";
+											workSheet.Cells["AG1:AG2"].Style.Border.Left.Style = OfficeOpenXml.Style.ExcelBorderStyle.Medium;
+											workSheet.Cells["AK1:AK2"].Style.Border.Right.Style = OfficeOpenXml.Style.ExcelBorderStyle.Medium;
+
+											workSheet.Cells["AL1:AS1"].Style.WrapText = true;
+											workSheet.Cells["AL1:AS1"].Merge = true;
+											workSheet.Cells["AL1:AS1"].Value = "NTP";
+											workSheet.Cells["AL1:AL2"].Style.Border.Left.Style = OfficeOpenXml.Style.ExcelBorderStyle.Medium;
+											workSheet.Cells["AS1:AS2"].Style.Border.Right.Style = OfficeOpenXml.Style.ExcelBorderStyle.Medium;
+
+											workSheet.Cells["E:E"].Style.Numberformat.Format = "#,###,###,##0";
+											workSheet.Cells["F:F"].Style.Numberformat.Format = "#,###,###,##0";
+											workSheet.Cells["N:N"].Style.Numberformat.Format = "#,###,###,##0";
+											workSheet.Cells["O:O"].Style.Numberformat.Format = "#,###,###,##0";
+											workSheet.Cells["P:P"].Style.Numberformat.Format = "#,###,###,##0";
+											workSheet.Cells["Q:Q"].Style.Numberformat.Format = "#,###,###,##0";
+											workSheet.Cells["R:R"].Style.Numberformat.Format = "#,###,###,##0";
+											workSheet.Cells["S:S"].Style.Numberformat.Format = "#,###,###,##0";
+											workSheet.Cells["AL:AL"].Style.Numberformat.Format = "#,###,###,##0";
+											workSheet.Cells["AM:AM"].Style.Numberformat.Format = "#,###,###,##0";
+											workSheet.Cells["AN:AN"].Style.Numberformat.Format = "#,###,###,##0";
+											workSheet.Cells["AO:AO"].Style.Numberformat.Format = "#,###,###,##0";
+											workSheet.Cells["AP:AP"].Style.Numberformat.Format = "#,###,###,##0";
+
+											workSheet.Cells["J:J"].Style.Numberformat.Format = "#,###,###,##0.00";
+											workSheet.Cells["K:K"].Style.Numberformat.Format = "#,###,###,##0.00";
+											workSheet.Cells["L:L"].Style.Numberformat.Format = "#,###,###,##0.00";
+											workSheet.Cells["M:M"].Style.Numberformat.Format = "#,###,###,##0.00";
+											workSheet.Cells["X:X"].Style.Numberformat.Format = "#,###,###,##0.00";
+											workSheet.Cells["Y:Y"].Style.Numberformat.Format = "#,###,###,##0.00";
+											workSheet.Cells["AA:AA"].Style.Numberformat.Format = "#,###,###,##0.00";
+											workSheet.Cells["AB:AB"].Style.Numberformat.Format = "#,###,###,##0.00";
+											workSheet.Cells["AC:AC"].Style.Numberformat.Format = "#,###,###,##0.00";
+											workSheet.Cells["AD:AD"].Style.Numberformat.Format = "#,###,###,##0.00";
+											workSheet.Cells["AE:AE"].Style.Numberformat.Format = "#,###,###,##0.00";
+											workSheet.Cells["AF:AF"].Style.Numberformat.Format = "#,###,###,##0.00";
+											workSheet.Cells["AQ:AQ"].Style.Numberformat.Format = "#,###,###,##0.00";
+											workSheet.Cells["AR:AR"].Style.Numberformat.Format = "#,###,###,##0.00";
+											workSheet.Cells["AS:AS"].Style.Numberformat.Format = "#,###,###,##0.00";
+
+											workSheet.Cells["A2:AS2"].AutoFilter = true;
+											workSheet.Cells.AutoFitColumns();
+										},
+										null,
+										"A2");
+			}
 
 			if (dtYaml.Rows.Count > 0)
 			{
@@ -1473,13 +1490,14 @@ void ReadRingFileParseIntoDataTables(IFilePath ringFilePath,
 {
 	if (dtRingInfo.Columns.Count == 0)
 	{
-		dtRingInfo.Columns.Add("Node IPAdress", typeof(string));
+		dtRingInfo.Columns.Add("Node IPAddress", typeof(string));
 		dtRingInfo.Columns[0].Unique = true;
 		dtRingInfo.PrimaryKey = new System.Data.DataColumn[] { dtRingInfo.Columns[0] };
-		dtRingInfo.Columns.Add("DataCenter", typeof(string));
+		dtRingInfo.Columns.Add("Data Center", typeof(string));
 		dtRingInfo.Columns.Add("Rack", typeof(string));
 		dtRingInfo.Columns.Add("Status", typeof(string));
 		dtRingInfo.Columns.Add("Instance Type", typeof(string)).AllowDBNull = true;
+		dtRingInfo.Columns.Add("Cluster Name", typeof(string)).AllowDBNull = true;
 		dtRingInfo.Columns.Add("Storage Used (MB)", typeof(decimal)).AllowDBNull = true;
 		dtRingInfo.Columns.Add("Storage Utilization", typeof(decimal)).AllowDBNull = true;
 		//dtRingInfo.Columns.Add("Number of Restarts", typeof(int)).AllowDBNull = true;
@@ -1498,8 +1516,8 @@ void ReadRingFileParseIntoDataTables(IFilePath ringFilePath,
 
 	if (dtTokenRange.Columns.Count == 0)
 	{
-		dtTokenRange.Columns.Add("DataCenter", typeof(string));
-		dtTokenRange.Columns.Add("Node IPAdress", typeof(string));
+		dtTokenRange.Columns.Add("Data Center", typeof(string));
+		dtTokenRange.Columns.Add("Node IPAddress", typeof(string));
 		dtTokenRange.Columns.Add("Start Token (exclusive)", typeof(long));
 		dtTokenRange.Columns.Add("End Token (inclusive)", typeof(long));
 		dtTokenRange.Columns.Add("Slots", typeof(long));
@@ -1560,8 +1578,8 @@ void ReadRingFileParseIntoDataTables(IFilePath ringFilePath,
 					{
 						dataRow = dtRingInfo.NewRow();
 
-						dataRow["Node IPAdress"] = ipAddress;
-						dataRow["DataCenter"] = currentDC;
+						dataRow["Node IPAddress"] = ipAddress;
+						dataRow["Data Center"] = currentDC;
 						dataRow["Rack"] = parsedLine[1];
 						dataRow["Status"] = parsedLine[2];
 
@@ -1570,8 +1588,8 @@ void ReadRingFileParseIntoDataTables(IFilePath ringFilePath,
 
 					dataRow = dtTokenRange.NewRow();
 
-					dataRow["DataCenter"] = currentDC;
-					dataRow["Node IPAdress"] = ipAddress;
+					dataRow["Data Center"] = currentDC;
+					dataRow["Node IPAddress"] = ipAddress;
 					dataRow["Start Token (exclusive)"] = currentStartToken;
 					endToken = long.Parse(parsedLine[7]);
 					dataRow["End Token (inclusive)"] = endToken;
@@ -1610,7 +1628,7 @@ void ReadCFStatsFileParseIntoDataTable(IFilePath cfstatsFilePath,
 	if (dtFSStats.Columns.Count == 0)
 	{
 		dtFSStats.Columns.Add("Data Center", typeof(string)).AllowDBNull = true;
-		dtFSStats.Columns.Add("Node IPAdress", typeof(string));
+		dtFSStats.Columns.Add("Node IPAddress", typeof(string));
 		dtFSStats.Columns.Add("KeySpace", typeof(string));
 		dtFSStats.Columns.Add("Table", typeof(string)).AllowDBNull = true;
 		dtFSStats.Columns.Add("Attribute", typeof(string));
@@ -1673,7 +1691,7 @@ void ReadCFStatsFileParseIntoDataTable(IFilePath cfstatsFilePath,
 				dataRow = dtFSStats.NewRow();
 
 				dataRow["Data Center"] = dcName;
-				dataRow["Node IPAdress"] = ipAddress;
+				dataRow["Node IPAddress"] = ipAddress;
 				dataRow["KeySpace"] = currentKS;
 				dataRow["Table"] = currentTbl;
 				dataRow["Attribute"] = parsedLine[0];
@@ -1727,7 +1745,7 @@ void ReadTPStatsFileParseIntoDataTable(IFilePath tpstatsFilePath,
 	{
 		dtTPStats.Columns.Add("Data Center", typeof(string));
 		dtTPStats.Columns[0].AllowDBNull = true;
-		dtTPStats.Columns.Add("Node IPAdress", typeof(string));
+		dtTPStats.Columns.Add("Node IPAddress", typeof(string));
 		dtTPStats.Columns.Add("Attribute", typeof(string));
 		
 		dtTPStats.Columns.Add("Active", typeof(long));
@@ -1813,7 +1831,7 @@ void ReadCassandraLogParseIntoDataTable(IFilePath clogFilePath,
 	if (dtCLog.Columns.Count == 0)
 	{
 		dtCLog.Columns.Add("Data Center", typeof(string)).AllowDBNull = true;
-		dtCLog.Columns.Add("Node IPAdress", typeof(string));
+		dtCLog.Columns.Add("Node IPAddress", typeof(string));
 		dtCLog.Columns.Add("Timestamp", typeof(DateTime));
 		dtCLog.Columns.Add("Indicator", typeof(string));
 		dtCLog.Columns.Add("Task", typeof(string));
@@ -2247,6 +2265,42 @@ void ReadCassandraLogParseIntoDataTable(IFilePath clogFilePath,
 					dataRow["Assocated Item"] = splitItems.Item1 + '.' + splitItems.Item2;
 				}
 			}
+			else if (parsedValues[4] == "MessagingService.java")
+			{
+				//MessagingService.java --  MUTATION messages were dropped in last 5000 ms: 43 for internal timeout and 0 for cross node timeout
+				if (nCell == itemPos)
+				{
+					var valueDR = dataRow["Assocated Value"];
+					int nbrDrops = 0;
+
+					int.TryParse(parsedValues[nCell], out nbrDrops);
+					
+					if (valueDR == DBNull.Value)
+					{
+						dataRow["Assocated Value"] = nbrDrops;
+						itemPos = nCell + 5;
+					}
+					else
+					{
+						int? currentDrops = valueDR as int?;
+
+						if (currentDrops.HasValue)
+						{
+							dataRow["Assocated Value"] = nbrDrops + currentDrops.Value;
+						}
+						else
+						{
+							dataRow["Assocated Value"] = nbrDrops;
+						}
+						
+					}
+				}
+				if (parsedValues[nCell] == "MUTATION")
+				{
+					dataRow["Assocated Item"] = "Dropped Mutations";
+					itemPos = nCell + 8;
+				}
+			}
 
 			logDesc.Append(' ');
 			logDesc.Append(parsedValues[nCell]);
@@ -2270,7 +2324,7 @@ static Regex RegExCreateIndex = new Regex(@"\s*create\s+(?:custom\s*)?index\s+(.
 										RegexOptions.IgnoreCase | RegexOptions.Compiled);
 										
 void ReadCQLDDLParseIntoDataTable(IFilePath cqlDDLFilePath,
-									string ipAdress,
+									string IPAddress,
 									string dcName,
 									System.Data.DataTable dtKeySpace,
 									System.Data.DataTable dtTable,
@@ -2283,11 +2337,11 @@ void ReadCQLDDLParseIntoDataTable(IFilePath cqlDDLFilePath,
 		dtKeySpace.Columns.Add("Name", typeof(string));
 		
 		dtKeySpace.Columns.Add("Replication Strategy", typeof(string));
-		dtKeySpace.Columns.Add("DataCenter", typeof(string));
+		dtKeySpace.Columns.Add("Data Center", typeof(string));
 		dtKeySpace.Columns.Add("Replication Factor", typeof(int));
 		dtKeySpace.Columns.Add("DDL", typeof(string));
 
-		dtKeySpace.PrimaryKey = new System.Data.DataColumn[] { dtKeySpace.Columns["Name"], dtKeySpace.Columns["DataCenter"] };
+		dtKeySpace.PrimaryKey = new System.Data.DataColumn[] { dtKeySpace.Columns["Name"], dtKeySpace.Columns["Data Center"] };
 	}
 
 	if (dtTable.Columns.Count == 0)
@@ -2405,7 +2459,7 @@ void ReadCQLDDLParseIntoDataTable(IFilePath cqlDDLFilePath,
 																		Common.StringFunctions.SplitBehaviorOptions.Default
 																			| Common.StringFunctions.SplitBehaviorOptions.RemoveEmptyEntries);
 
-						dataRow["DataCenter"] = RemoveQuotes(parsedComponent[0]);
+						dataRow["Data Center"] = RemoveQuotes(parsedComponent[0]);
 						dataRow["Replication Factor"] = int.Parse(RemoveQuotes(parsedComponent[1]));
 						dataRow["DDL"] = cqlStr;
 						
@@ -2617,7 +2671,7 @@ void ReadCompactionHistFileParseIntoDataTable(IFilePath cmphistFilePath,
 	{
 		dtCmpHist.Columns.Add("Data Center", typeof(string));
 		dtCmpHist.Columns[0].AllowDBNull = true;
-		dtCmpHist.Columns.Add("Node IPAdress", typeof(string));
+		dtCmpHist.Columns.Add("Node IPAddress", typeof(string));
 		dtCmpHist.Columns.Add("KeySpace", typeof(string));
 		dtCmpHist.Columns.Add("Table", typeof(string));
 		dtCmpHist.Columns.Add("Compaction Timestamp (UTC)", typeof(DateTime));
@@ -2703,7 +2757,7 @@ void ReadCompactionHistFileParseIntoDataTable(IFilePath cmphistFilePath,
 		dataRow = dtCmpHist.NewRow();
 
 		dataRow["Data Center"] = dcName;
-		dataRow["Node IPAdress"] = ipAddress;
+		dataRow["Node IPAddress"] = ipAddress;
 		dataRow["KeySpace"] = currentKeySpace;
 		dataRow["Table"] = currentTable;
 		dataRow["Compaction Timestamp (UTC)"] = FromUnixTime(parsedLine[3 - offSet]);
@@ -2792,7 +2846,7 @@ void ReadInfoFileParseIntoDataTable(IFilePath infoFilePath,
 				break;
 			case "id":
 			case "token":
-			case "data center":
+			case "datacenter":
 			case "rack":
 				break;
 			case "exceptions":
@@ -2859,8 +2913,8 @@ void ReadDSEToolRingFileParseIntoDataTable(IFilePath dseRingFilePath,
 				
 				dataRow = dtRingInfo.NewRow();
 
-				dataRow["Node IPAdress"] = ipAddress;
-				dataRow["DataCenter"] = parsedLine[1];
+				dataRow["Node IPAddress"] = ipAddress;
+				dataRow["Data Center"] = parsedLine[1];
 				dataRow["Rack"] = parsedLine[2];
 				dataRow["Status"] = parsedLine[4];
 				dataRow["Instance Type"] = parsedLine[3];
@@ -2997,7 +3051,7 @@ class YamlInfo
 		
 		drYama["Yaml Type"] = this.YamlType;
 		drYama["Data Center"] = this.DCName;
-		drYama["Node IPAdress"] = this.IPAddress;
+		drYama["Node IPAddress"] = this.IPAddress;
 		drYama["Property"] = this.ProperyName(inxProperty);
 		drYama["Value"] = this.ProperyValue(inxProperty);
 		
@@ -3211,7 +3265,7 @@ void ParseYamlListIntoDataTable(Common.Patterns.Collections.LockFree.Stack<List<
 	if (dtCYaml.Columns.Count == 0)
 	{
 		dtCYaml.Columns.Add("Data Center", typeof(string)).AllowDBNull = true;
-		dtCYaml.Columns.Add("Node IPAdress", typeof(string));
+		dtCYaml.Columns.Add("Node IPAddress", typeof(string));
 		dtCYaml.Columns.Add("Yaml Type", typeof(string));
 		dtCYaml.Columns.Add("Property", typeof(string));
 		dtCYaml.Columns.Add("Value", typeof(object));
@@ -3235,7 +3289,7 @@ class CLogSummaryInfo : IEqualityComparer<CLogSummaryInfo>, IEquatable<CLogSumma
 	public CLogSummaryInfo(DateTime period, TimeSpan periodSpan, string itemType, string itemValue, DataRowView dataRow)
 	{
 //		dtCLog.Columns.Add("Data Center", typeof(string)).AllowDBNull = true;
-//		dtCLog.Columns.Add("Node IPAdress", typeof(string));
+//		dtCLog.Columns.Add("Node IPAddress", typeof(string));
 //		dtCLog.Columns.Add("Timestamp", typeof(DateTime));
 //		dtCLog.Columns.Add("Indicator", typeof(string));
 //		dtCLog.Columns.Add("Task", typeof(string));
@@ -3248,7 +3302,7 @@ class CLogSummaryInfo : IEqualityComparer<CLogSummaryInfo>, IEquatable<CLogSumma
 //		dtCLog.Columns.Add("Flagged", typeof(bool)).AllowDBNull = true;
 
 		this.DataCenter = dataRow == null ? null : dataRow["Data Center"] as string;
-		this.IPAddress = dataRow == null ? null : (string) dataRow["Node IPAdress"];
+		this.IPAddress = dataRow == null ? null : (string) dataRow["Node IPAddress"];
 		this.AssocatedItem = dataRow == null ? null : dataRow["Assocated Item"] as string;
 		this.ItemType = itemType;
 		this.ItemValue = itemValue;
@@ -3310,7 +3364,7 @@ class CLogSummaryInfo : IEqualityComparer<CLogSummaryInfo>, IEquatable<CLogSumma
 	{
 		if(dataRow == null) return false; 
 		
-		return this.IPAddress == (string) dataRow["Node IPAdress"]
+		return this.IPAddress == (string) dataRow["Node IPAddress"]
 				&& this.DataCenter == dataRow["Data Center"] as string
 				&& this.ItemType == itemType
 				&& this.ItemValue == itemValue
@@ -3411,7 +3465,7 @@ void ParseCassandraLogIntoSummaryDataTable(DataTable dtroCLog,
 				}
 
 				//		dtCLog.Columns.Add("Data Center", typeof(string)).AllowDBNull = true;
-				//		dtCLog.Columns.Add("Node IPAdress", typeof(string));
+				//		dtCLog.Columns.Add("Node IPAddress", typeof(string));
 				//		dtCLog.Columns.Add("Timestamp", typeof(DateTime));
 				//		dtCLog.Columns.Add("Indicator", typeof(string));
 				//		dtCLog.Columns.Add("Task", typeof(string));
@@ -3566,6 +3620,7 @@ static Regex RegExPool2Line = new Regex(@"\s*(\w+)\s+(\w+/\w+|\d+)\s+(\w+/\w+|\d
 										
 void ParseCassandraLogIntoStatusLogDataTable(DataTable dtroCLog,
 												DataTable dtCStatusLog,
+												Common.Patterns.Collections.ThreadSafe.Dictionary<string,string> dictGCIno,
 												string ipAddress,
 												string dcName,
 												List<string> ignoreKeySpaces)
@@ -3620,7 +3675,7 @@ void ParseCassandraLogIntoStatusLogDataTable(DataTable dtroCLog,
 	if (dtroCLog.Rows.Count > 0)
 	{
 		//		dtCLog.Columns.Add("Data Center", typeof(string)).AllowDBNull = true;
-		//		dtCLog.Columns.Add("Node IPAdress", typeof(string));
+		//		dtCLog.Columns.Add("Node IPAddress", typeof(string));
 		//		dtCLog.Columns.Add("Timestamp", typeof(DateTime));
 		//		dtCLog.Columns.Add("Indicator", typeof(string));
 		//		dtCLog.Columns.Add("Task", typeof(string));
@@ -3667,10 +3722,12 @@ void ParseCassandraLogIntoStatusLogDataTable(DataTable dtroCLog,
 					dataRow["Timestamp"] = vwDataRow["Timestamp"];
 					dataRow["Data Center"] = dcName;
 					dataRow["Node IPAddress"] = ipAddress;
-					dataRow["Pool/Cache Type"] = "GC";
+					dataRow["Pool/Cache Type"] = "GC-ParNew";
 					dataRow["GC Time (ms)"] = DetermineTime(splits[1]);
 					
 					dtCStatusLog.Rows.Add(dataRow);
+					
+					dictGCIno.TryAdd((dcName == null ? string.Empty : dcName)  + "|" + ipAddress, "GC-ParNew");
 				}
 				if (descr.TrimStart().StartsWith("ConcurrentMarkSweep"))
 				{
@@ -3695,6 +3752,7 @@ void ParseCassandraLogIntoStatusLogDataTable(DataTable dtroCLog,
 					}
 					
 					dtCStatusLog.Rows.Add(dataRow);
+					dictGCIno.AddOrUpdate((dcName == null ? string.Empty : dcName) + "|" + ipAddress, "GC-CMS", (item1,item2) => "GC-CMS");
 				}
 				else if (descr.TrimStart().StartsWith("G1 Young Generation GC in"))
 				{
@@ -3704,7 +3762,7 @@ void ParseCassandraLogIntoStatusLogDataTable(DataTable dtroCLog,
 					dataRow["Timestamp"] = vwDataRow["Timestamp"];
 					dataRow["Data Center"] = dcName;
 					dataRow["Node IPAddress"] = ipAddress;
-					dataRow["Pool/Cache Type"] = "G1";
+					dataRow["Pool/Cache Type"] = "GC-G1";
 					dataRow["GC Time (ms)"] = DetermineTime(splits[1]);
 
 					if (splits.Length >= 4 && !string.IsNullOrEmpty(splits[2]))
@@ -3724,6 +3782,7 @@ void ParseCassandraLogIntoStatusLogDataTable(DataTable dtroCLog,
 					}
 
 					dtCStatusLog.Rows.Add(dataRow);
+					dictGCIno.AddOrUpdate((dcName == null ? string.Empty : dcName)  + "|" + ipAddress, "GC-C1", (item1,item2) => "GC-G1");
 				}
 
 				continue;
@@ -3870,9 +3929,9 @@ void ParseOSMachineInfoDataTable(IDirectoryPath directoryPath,
 {
 	if (dtOSMachineInfo.Columns.Count == 0)
 	{
-		dtOSMachineInfo.Columns.Add("Node IPAdress", typeof(string)).Unique = true;
-		dtOSMachineInfo.PrimaryKey = new System.Data.DataColumn[] { dtOSMachineInfo.Columns["Node IPAdress"] };
-		dtOSMachineInfo.Columns.Add("DataCenter", typeof(string)).AllowDBNull = true;
+		dtOSMachineInfo.Columns.Add("Node IPAddress", typeof(string)).Unique = true;
+		dtOSMachineInfo.PrimaryKey = new System.Data.DataColumn[] { dtOSMachineInfo.Columns["Node IPAddress"] };
+		dtOSMachineInfo.Columns.Add("Data Center", typeof(string)).AllowDBNull = true;
 		
 		dtOSMachineInfo.Columns.Add("Instance Type", typeof(string)).AllowDBNull = true;//c
 		dtOSMachineInfo.Columns.Add("CPU Architecture", typeof(string));
@@ -3898,39 +3957,40 @@ void ParseOSMachineInfoDataTable(IDirectoryPath directoryPath,
 		dtOSMachineInfo.Columns.Add("Model", typeof(string));
 		dtOSMachineInfo.Columns.Add("Runtime Name", typeof(string));
 		dtOSMachineInfo.Columns.Add("Runtime Version", typeof(string));//w
+		dtOSMachineInfo.Columns.Add("GC", typeof(string)).AllowDBNull = true;
 		//Java NonHeapMemoryUsage
-		dtOSMachineInfo.Columns.Add("Non-Heap Committed", typeof(decimal)); //x
+		dtOSMachineInfo.Columns.Add("Non-Heap Committed", typeof(decimal)); //y
 		dtOSMachineInfo.Columns.Add("Non-Heap Init", typeof(decimal));
-		dtOSMachineInfo.Columns.Add("Non-Heap Max", typeof(decimal));//z
-		dtOSMachineInfo.Columns.Add("Non-Heap Used", typeof(decimal));//aa
+		dtOSMachineInfo.Columns.Add("Non-Heap Max", typeof(decimal));//aa
+		dtOSMachineInfo.Columns.Add("Non-Heap Used", typeof(decimal));//ab
 		//Javaa HeapMemoryUsage
-		dtOSMachineInfo.Columns.Add("Heap Committed", typeof(decimal)); //ab
-		dtOSMachineInfo.Columns.Add("Heap Init", typeof(decimal)); //ac
-		dtOSMachineInfo.Columns.Add("Heap Max", typeof(decimal)); //ad
-		dtOSMachineInfo.Columns.Add("Heap Used", typeof(decimal)); //ae
+		dtOSMachineInfo.Columns.Add("Heap Committed", typeof(decimal)); //ac
+		dtOSMachineInfo.Columns.Add("Heap Init", typeof(decimal)); //ad
+		dtOSMachineInfo.Columns.Add("Heap Max", typeof(decimal)); //ae
+		dtOSMachineInfo.Columns.Add("Heap Used", typeof(decimal)); //af
 
 		//DataStax Versions
-		dtOSMachineInfo.Columns.Add("DSE", typeof(string)).AllowDBNull = true; //af
+		dtOSMachineInfo.Columns.Add("DSE", typeof(string)).AllowDBNull = true; //ag
 		dtOSMachineInfo.Columns.Add("Cassandra", typeof(string)).AllowDBNull = true;
 		dtOSMachineInfo.Columns.Add("Search", typeof(string)).AllowDBNull = true;
-		dtOSMachineInfo.Columns.Add("Spark", typeof(string)).AllowDBNull = true;//ai
-		dtOSMachineInfo.Columns.Add("VNodes", typeof(bool)).AllowDBNull = true; //aj
+		dtOSMachineInfo.Columns.Add("Spark", typeof(string)).AllowDBNull = true;//aj
+		dtOSMachineInfo.Columns.Add("VNodes", typeof(bool)).AllowDBNull = true; //ak
 		
 		//NTP
-		dtOSMachineInfo.Columns.Add("Correction (ms)", typeof(int)); //ak
+		dtOSMachineInfo.Columns.Add("Correction (ms)", typeof(int)); //al
 		dtOSMachineInfo.Columns.Add("Polling (secs)", typeof(int));
 		dtOSMachineInfo.Columns.Add("Maximum Error (us)", typeof(int));
 		dtOSMachineInfo.Columns.Add("Estimated Error (us)", typeof(int));
-		dtOSMachineInfo.Columns.Add("Time Constant", typeof(int)); //ao
-		dtOSMachineInfo.Columns.Add("Precision (us)", typeof(decimal)); //ap
+		dtOSMachineInfo.Columns.Add("Time Constant", typeof(int)); //ap
+		dtOSMachineInfo.Columns.Add("Precision (us)", typeof(decimal)); //aq
 		dtOSMachineInfo.Columns.Add("Frequency (ppm)", typeof(decimal));
-		dtOSMachineInfo.Columns.Add("Tolerance (ppm)", typeof(decimal)); //ar
+		dtOSMachineInfo.Columns.Add("Tolerance (ppm)", typeof(decimal)); //as
 	}
 
 	var dataRow = dtOSMachineInfo.NewRow();
 
-	dataRow["Node IPAdress"] = ipAddress;
-	dataRow["DataCenter"] = dcName;
+	dataRow["Node IPAddress"] = ipAddress;
+	dataRow["Data Center"] = dcName;
 	
 	foreach (var fileName in osmachineFiles)
 	{
@@ -4103,9 +4163,9 @@ void ParseOPSCenterInfoDataTable(IDirectoryPath directoryPath,
 					
 					foreach (DataRow dataRow in dtOSMachineInfo.Rows)
 					{
-						if (nodeInfoDict.ContainsKey((string)dataRow["Node IPAdress"]))
+						if (nodeInfoDict.ContainsKey((string)dataRow["Node IPAddress"]))
 						{
-							var nodeInfo = (Dictionary<string,object>) nodeInfoDict[(string)dataRow["Node IPAdress"]];
+							var nodeInfo = (Dictionary<string,object>) nodeInfoDict[(string)dataRow["Node IPAddress"]];
 							var dseVersions = (Dictionary<string,object>) nodeInfo["node_version"];
 							
 							dataRow.BeginEdit();
@@ -4131,6 +4191,73 @@ void ParseOPSCenterInfoDataTable(IDirectoryPath directoryPath,
 					}
 				}
 			}
+		}
+	}
+}
+
+void UpdateRingInfo(System.Data.DataTable dtRingInfo,
+					System.Data.DataTable dtCYaml)
+{
+	if (dtRingInfo.Rows.Count == 0 || dtCYaml.Rows.Count == 0)
+	{
+		return;
+	}
+	
+	var yamlClusterNameView = new DataView(dtCYaml,
+											"[Node IPAddress] = '<Common>' and [Property] = 'cluster_name' and [Yaml Type] = 'cassandra'",
+											null,
+											DataViewRowState.CurrentRows);
+
+	if (yamlClusterNameView.Count >= 1)
+	{
+		foreach (DataRow drRingInfo in dtRingInfo.Rows)
+		{
+			foreach (DataRowView drView in yamlClusterNameView)
+			{
+				if (drView["Data Center"] == drRingInfo["Data Center"])
+				{
+					drRingInfo["Cluster Name"] = drView["Value"];
+				}
+			}
+		}
+		
+		return;
+	}
+
+	foreach (DataRow drRingInfo in dtRingInfo.Rows)
+	{
+		yamlClusterNameView = new DataView(dtCYaml,
+											string.Format("[Data Center] = '{0}' and [Node IPAddress] = '{1}' and [Property] = 'cluster_name' and [Yaml Type] = 'cassandra'", 
+															drRingInfo["Data Center"],
+															drRingInfo["Node IPAddress"]),
+											null,
+											DataViewRowState.CurrentRows);
+
+		if (yamlClusterNameView.Count >= 1)
+		{
+			drRingInfo["Cluster Name"] = yamlClusterNameView[0]["Value"] as string;
+		}
+	}
+}
+
+void UpdateMachineInfo(System.Data.DataTable dtOSMachineInfo,
+						Common.Patterns.Collections.ThreadSafe.Dictionary<string, string> dictGCIno)
+{
+	if (dtOSMachineInfo.Rows.Count == 0 || dictGCIno.IsEmpty())
+	{
+		return;
+	}
+
+	foreach (DataRow drMachineInfo in dtOSMachineInfo.Rows)
+	{
+		//dcName == null ? string.Empty : dcName) + "|" + ipAddress
+		var dcName = drMachineInfo["Data Center"] as string;
+		var ipAddress = drMachineInfo["Node IPAddress"] as string;
+		string gcValue;
+
+		if (dictGCIno.TryGetValue((dcName == null ? string.Empty : dcName) + "|" + ipAddress, out gcValue))
+		{
+			drMachineInfo["GC"] = gcValue;
 		}
 	}
 }
