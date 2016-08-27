@@ -34,11 +34,12 @@
 const int MaxRowInExcelWorkSheet = 500000; //-1 disabled
 const int MaxRowInExcelWorkBook = 1000000; //-1 disabled
 const int GCPausedFlagThresholdInMS = 5000; //Defines a threshold that will flag a log entry in both the log summary (only if GCInspector.java) and log worksheets
+const int CompactionFlagThresholdInMS = 5000; //Defines a threshold that will flag a log entry in both the log summary (only if CompactionTask.java) and log worksheets
 static TimeSpan LogTimeSpanRange = new TimeSpan(2, 0, 0, 0); //Only import log entries for the past timespan (e.g., the last 5 days) based on LogCurrentDate.
 static DateTime LogCurrentDate = DateTime.MinValue; //DateTime.Now.Date; //If DateTime.MinValue all log entries are parsed
 static int LogMaxRowsPerNode = -1; // -1 disabled
 static string[] LogSummaryIndicatorType = new string[] { "WARN", "ERROR" };
-static string[] LogSummaryTaskItems = new string[] { "SliceQueryFilter.java", "BatchStatement.java", "CompactionController.java", "HintedHandoffMetrics.java", "GCInspector.java", "MessagingService.java" };
+static string[] LogSummaryTaskItems = new string[] { "SliceQueryFilter.java", "BatchStatement.java", "CompactionController.java", "HintedHandoffMetrics.java", "GCInspector.java", "MessagingService.java", "CompactionTask.java", "RepairSession.java" };
 static string[] LogSummaryIgnoreTaskExceptions = new string[] { };
 static Tuple<DateTime, TimeSpan>[] LogSummaryPeriods = null; //new Tuple<DateTime, TimeSpan>[] { new Tuple<DateTime,TimeSpan>(new DateTime(2016, 08, 02), new TimeSpan(0, 0, 30, 0)), //From By date/time and aggregation period
 																						 //new Tuple<DateTime,TimeSpan>(new DateTime(2016, 08, 1, 0, 0, 0), new TimeSpan(0, 1, 0, 0)),
@@ -61,7 +62,7 @@ static Tuple<TimeSpan, TimeSpan>[] LogSummaryPeriodRanges = new Tuple<TimeSpan, 
 //	[Assocated Value], object, AllowDBNull (e.g., <size in MB>, <time in ms>)
 //	[Description], string -- log's description
 //	[Flagged], bool, AllowDBNull -- if true this log entry was flagged because it matched some criteria (e.g., GC Pauses -- GCInspector.java exceeds GCPausedFlagThresholdInMS)
-static string LogExcelWorkbookFilter = string.Empty; //"[Timestamp] >= #2016-08-01#"; //if null no filter is used, if string.Empty the max log timestamp with LogTimeSpanRange is used. 
+static string LogExcelWorkbookFilter = null; //"[Timestamp] >= #2016-08-01#"; //if null no filter is used, if string.Empty the max log timestamp with LogTimeSpanRange is used. 
 static bool LoadLogsIntoExcel = true;
 
 void Main()
@@ -70,8 +71,8 @@ void Main()
 	var excelTrmplateFilePath = @"[MyDocuments]\LINQPad Queries\DataStax\dseTemplate.xlsx"; 
 	
 	//Location where this application will write or update the Excel file.
-	var excelFilePath = @"[DeskTop]\Gamesys.xlsx"; //<==== Should be updated
-	//var excelFilePath = @"[DeskTop]\test.xlsx";
+	//var excelFilePath = @"[DeskTop]\Gamesys.xlsx"; //<==== Should be updated
+	var excelFilePath = @"[DeskTop]\test.xlsx";
 	
 	//If diagnosticNoSubFolders is false:
 	//Directory where files are located to parse DSE diagnostics files produced by DataStax OpsCenter diagnostics or a special directory structure where DSE diagnostics information is placed.
@@ -92,8 +93,8 @@ void Main()
 	//If diagnosticNoSubFolders is ture:
 	//	All diagnostic files are located directly under diagnosticPath folder. Each file should have the IP Adress either in the beginning or end of the file name.
 	//		e.g., cfstats_10.192.40.7, system-10.192.40.7.log, 10.192.40.7_system.log, etc.
-	var diagnosticPath = @"[MyDocuments]\LINQPad Queries\DataStax\TestData\gamingactivity-diagnostics-2016_08_10_08_45_40_UTC";
-	//var diagnosticPath = @"[MyDocuments]\LINQPad Queries\DataStax\TestData\production_group_v_1-diagnostics-2016_07_04_15_43_48_UTC"; 
+	//var diagnosticPath = @"[MyDocuments]\LINQPad Queries\DataStax\TestData\gamingactivity-diagnostics-2016_08_10_08_45_40_UTC";
+	var diagnosticPath = @"[MyDocuments]\LINQPad Queries\DataStax\TestData\production_group_v_1-diagnostics-2016_07_04_15_43_48_UTC"; 
 	//@"C:\Users\richard\Desktop\datastax"; 
 	var diagnosticNoSubFolders = false; //<==== Should be Updated 
 	var parseLogs = true;
@@ -196,6 +197,7 @@ void Main()
 	var logParsingTasks = new Common.Patterns.Collections.ThreadSafe.List<Task>();
 	var logSummaryParsingTasks = new Common.Patterns.Collections.ThreadSafe.List<Task>();
 	var logStatusParsingTasks = new Common.Patterns.Collections.ThreadSafe.List<Task>();
+	var kstblNames = new List<CKeySpaceTableNames>();
 
 	if (diagnosticNoSubFolders)
 	{
@@ -242,6 +244,15 @@ void Main()
 												dtTable,
 												cqlHashCheck,
 												ignoreKeySpaces);
+
+				foreach (DataRow dataRow in dtTable.Rows)
+				{
+					if (!kstblNames.Exists(item => item.KeySpaceName == (dataRow["Keyspace Name"] as string) && item.TableName == (dataRow["Name"] as string)))
+					{
+						kstblNames.Add(new CKeySpaceTableNames(dataRow));
+					}
+				}
+				
 				element.MakeEmpty();
 			}
 		}
@@ -355,13 +366,22 @@ void Main()
 						var statusTask = Task.Run(() =>
 						{
 							var dtStatusLog = new System.Data.DataTable(excelWorkSheetStatusLogCassandra + "-" + ipAddress);
+							var dtCFStats = new DataTable("CFStats-Comp" + "-" + ipAddress);
+							var dtTPStats = new DataTable("CFStats-GC" + "-" + ipAddress);
+							
 							dtLogStatusStack.Push(dtStatusLog);
+							dtCFStatsStack.Push(dtCFStats);
+							dtTPStatsStack.Push(dtTPStats);
+							
 							ParseCassandraLogIntoStatusLogDataTable(dtLog,
 																	dtStatusLog,
+																	dtCFStats,
+																	dtTPStats,
 																	nodeGCInfo,
 																	ipAddress,
 																	dcName,
-																	ignoreKeySpaces);
+																	ignoreKeySpaces,
+																	kstblNames);
 						});
 						logStatusParsingTasks.Add(statusTask);
 					}
@@ -451,6 +471,14 @@ void Main()
 												dtTable,
 												cqlHashCheck,
 												ignoreKeySpaces);
+
+				foreach (DataRow dataRow in dtTable.Rows)
+				{
+					if (!kstblNames.Exists(item => item.KeySpaceName == (dataRow["Keyspace Name"] as string) && item.TableName == (dataRow["Name"] as string)))
+					{
+						kstblNames.Add(new CKeySpaceTableNames(dataRow));
+					}
+				}
 			}
 		}
 
@@ -576,13 +604,22 @@ void Main()
 						var statusTask = Task.Run(() =>
 						{
 							var dtStatusLog = new System.Data.DataTable(excelWorkSheetStatusLogCassandra + "-" + ipAddress);
+							var dtCFStats = new DataTable("CFStats-Comp" + "-" + ipAddress);
+							var dtTPStats = new DataTable("CFStats-GC" + "-" + ipAddress);
+
 							dtLogStatusStack.Push(dtStatusLog);
+							dtCFStatsStack.Push(dtCFStats);
+							dtTPStatsStack.Push(dtTPStats);
+							
 							ParseCassandraLogIntoStatusLogDataTable(dtLog,
 																	dtStatusLog,
+																	dtCFStats,
+																	dtTPStats,
 																	nodeGCInfo,
 																	ipAddress,
 																	dcName,
-																	ignoreKeySpaces);
+																	ignoreKeySpaces,
+																	kstblNames);
 						});
 						logStatusParsingTasks.Add(statusTask);
                     });
@@ -717,11 +754,42 @@ void Main()
 											   dtLogStatusStack,
 											   workSheet =>
 												   {
-														workSheet.Cells["1:1"].Style.Fill.PatternType = OfficeOpenXml.Style.ExcelFillStyle.LightGray;
-													  	 workSheet.Cells["1:1"].Style.HorizontalAlignment = OfficeOpenXml.Style.ExcelHorizontalAlignment.Center;
-													   	//workSheet.Cells["1:1"].Style.Fill.BackgroundColor.SetColor(System.Drawing.Color.LightGray);
-													  	workSheet.View.FreezePanes(2, 1);													   
-													   	workSheet.Cells["A:A"].Style.Numberformat.Format = "mm/dd/yyyy hh:mm:ss";
+														workSheet.Cells["1:2"].Style.Fill.PatternType = OfficeOpenXml.Style.ExcelFillStyle.LightGray;
+														workSheet.Cells["1:2"].Style.HorizontalAlignment = OfficeOpenXml.Style.ExcelHorizontalAlignment.Center;
+														//workSheet.Cells["1:1"].Style.Fill.BackgroundColor.SetColor(System.Drawing.Color.LightGray);
+														workSheet.View.FreezePanes(3, 1);
+
+													   workSheet.Cells["G1:M1"].Style.WrapText = true;
+													   workSheet.Cells["G1:M1"].Merge = true;
+													   workSheet.Cells["G1:M1"].Value = "GC";
+													   workSheet.Cells["G1:G2"].Style.Border.Left.Style = OfficeOpenXml.Style.ExcelBorderStyle.Medium;
+													   workSheet.Cells["M1:M2"].Style.Border.Right.Style = OfficeOpenXml.Style.ExcelBorderStyle.Medium;
+
+													   workSheet.Cells["N1:R1"].Style.WrapText = true;
+														workSheet.Cells["N1:R1"].Merge = true;
+														workSheet.Cells["N1:R1"].Value = "Pool";
+														workSheet.Cells["N1:N2"].Style.Border.Left.Style = OfficeOpenXml.Style.ExcelBorderStyle.Medium;
+														workSheet.Cells["R1:R2"].Style.Border.Right.Style = OfficeOpenXml.Style.ExcelBorderStyle.Medium;
+
+													   workSheet.Cells["S1:U1"].Style.WrapText = true;
+													   workSheet.Cells["S1:U1"].Merge = true;
+													   workSheet.Cells["S1:U1"].Value = "Cache";
+													   workSheet.Cells["S1:S2"].Style.Border.Left.Style = OfficeOpenXml.Style.ExcelBorderStyle.Medium;
+													   workSheet.Cells["U1:U2"].Style.Border.Right.Style = OfficeOpenXml.Style.ExcelBorderStyle.Medium;
+
+													   workSheet.Cells["V1:W1"].Style.WrapText = true;
+													   workSheet.Cells["V1:W1"].Merge = true;
+													   workSheet.Cells["V1:W1"].Value = "Column Family";
+													   workSheet.Cells["V1:V2"].Style.Border.Left.Style = OfficeOpenXml.Style.ExcelBorderStyle.Medium;
+													   workSheet.Cells["W1:W2"].Style.Border.Right.Style = OfficeOpenXml.Style.ExcelBorderStyle.Medium;
+
+													   workSheet.Cells["X1:AD"].Style.WrapText = true;
+													   workSheet.Cells["X1:AD1"].Merge = true;
+													   workSheet.Cells["X1:AD1"].Value = "Compaction";
+													   workSheet.Cells["X1:X2"].Style.Border.Left.Style = OfficeOpenXml.Style.ExcelBorderStyle.Medium;
+													   workSheet.Cells["AD1:AD2"].Style.Border.Right.Style = OfficeOpenXml.Style.ExcelBorderStyle.Medium;													   
+
+													   workSheet.Cells["A:A"].Style.Numberformat.Format = "mm/dd/yyyy hh:mm:ss";
 														workSheet.Cells["G:G"].Style.Numberformat.Format = "#,###,###,##0";
 														workSheet.Cells["N:R"].Style.Numberformat.Format = "#,###,###,##0";
 														workSheet.Cells["V:V"].Style.Numberformat.Format = "#,###,###,##0";														
@@ -729,14 +797,21 @@ void Main()
 														workSheet.Cells["S:T"].Style.Numberformat.Format = "#,###,###,##0.00";
 														workSheet.Cells["Y:Y"].Style.Numberformat.Format = "#,###,###,##0.00";
 														workSheet.Cells["W:W"].Style.Numberformat.Format = "#,###,###,##0.00";
-														workSheet.Cells["A1:W1"].AutoFilter = true;
-													   	workSheet.Cells.AutoFitColumns();														
+														workSheet.Cells["X:X"].Style.Numberformat.Format = "#,###,###,##0";
+														workSheet.Cells["AA:AA"].Style.Numberformat.Format = "#,###,###,##0";
+														workSheet.Cells["Y:Y"].Style.Numberformat.Format = "#,###,###,##0.00";
+														workSheet.Cells["Z:Z"].Style.Numberformat.Format = "#,###,###,##0.00";
+														workSheet.Cells["AB:AB"].Style.Numberformat.Format = "#,###,###,##0.00";
+														
+														workSheet.Cells["A2:AD2"].AutoFilter = true;
+														workSheet.Cells.AutoFitColumns();														
 												   },
 												   MaxRowInExcelWorkBook,
 												   MaxRowInExcelWorkSheet,
 												   new Tuple<string, string, DataViewRowState>(null,
 												   												"[Data Center], [Timestamp] DESC",
-																								DataViewRowState.CurrentRows));
+																								DataViewRowState.CurrentRows),
+													"A2");
 		}
 		
 	});
@@ -823,7 +898,7 @@ void Main()
 											workSheet.Cells["G:G"].Style.Numberformat.Format = "#,###,###,##0.00";
 											workSheet.Cells["H:H"].Style.Numberformat.Format = "#,###,###,##0";
 											workSheet.Cells["I:I"].Style.Numberformat.Format = "#,###,###,##0.00";
-											workSheet.Cells["K1"].AddComment("The notation means {tables:rows}. For example {1:3, 3:1} means 3 rows were taken from one sstable (1:3) and 1 row taken from 3 (3:1) sstables, all to make the one sstable in that compaction operation.", "Rich Andersen");
+											workSheet.Cells["K1"].AddComment("The notation means {sstables:rows}. For example {1:3, 3:1} means 3 rows were taken from one sstable (1:3) and 1 row taken from 3 (3:1) sstables, all to make the one sstable in that compaction operation.", "Rich Andersen");
 
 											workSheet.View.FreezePanes(2, 1);
 											workSheet.Cells["A1:J1"].AutoFilter = true;
@@ -873,6 +948,13 @@ void Main()
 												workSheet.Cells["J:J"].Style.Numberformat.Format = "###";
 												workSheet.Cells["K:K"].Style.Numberformat.Format = "###";
 												workSheet.Cells["A2:M2"].AutoFilter = true;
+
+												workSheet.Cells["H2"].AddComment("speculative_retry -- To override normal read timeout when read_repair_chance is not 1.0, sending another request to read, choose one of these values and use the property to create or alter the table: \"ALWAYS\" -- Retry reads of all replicas, \"Xpercentile\" -- Retry reads based on the effect on throughput and latency, \"Yms\" -- Retry reads after specified milliseconds, \"NONE\" -- Do not retry reads. Using the speculative retry property, you can configure rapid read protection in Cassandra 2.0.2 and later.Use this property to retry a request after some milliseconds have passed or after a percentile of the typical read latency has been reached, which is tracked per table.", "Richard Andersen");
+												workSheet.Cells["G2"].AddComment("dclocal_read_repair_chance -- Specifies the probability of read repairs being invoked over all replicas in the current data center. Defaults are: 0.1 (Cassandra 2.1, Cassandra 2.0.9 and later) 0.0 (Cassandra 2.0.8 and earlier)", "Richard Andersen");
+												workSheet.Cells["F2"].AddComment("read_repair_chance -- Specifies the basis for invoking read repairs on reads in clusters. The value must be between 0 and 1. Default Values are: 0.0 (Cassandra 2.1, Cassandra 2.0.9 and later) 0.1 (Cassandra 2.0.8 and earlier)", "Richard Andersen");
+												workSheet.Cells["I2"].AddComment("gc_grace_seconds -- Specifies the time to wait before garbage collecting tombstones (deletion markers). The default value allows a great deal of time for consistency to be achieved prior to deletion. In many deployments this interval can be reduced, and in a single-node cluster it can be safely set to zero. Default value is 864000 [10 days]", "Richard Andersen");
+
+
 												workSheet.Cells.AutoFitColumns();
 											},
 											null,
@@ -923,7 +1005,7 @@ void Main()
 											workSheet.Cells["J1:M1"].Style.WrapText = true;
 											workSheet.Cells["J1:M1"].Merge = true;
 											workSheet.Cells["J1:M1"].Value = "CPU Load (Percent)";
-											workSheet.Cells["J1:M2"].Style.Border.Left.Style = OfficeOpenXml.Style.ExcelBorderStyle.Medium;
+											workSheet.Cells["J1:J2"].Style.Border.Left.Style = OfficeOpenXml.Style.ExcelBorderStyle.Medium;
 											workSheet.Cells["M1:M2"].Style.Border.Right.Style = OfficeOpenXml.Style.ExcelBorderStyle.Medium;
 
 											workSheet.Cells["N1:S1"].Style.WrapText = true;
@@ -1635,29 +1717,35 @@ void ReadRingFileParseIntoDataTables(IFilePath ringFilePath,
 	
 }
 
+void initializeCFStatsDataTable(DataTable dtCFStats)
+{
+	if (dtCFStats.Columns.Count == 0)
+	{
+		dtCFStats.Columns.Add("Data Center", typeof(string)).AllowDBNull = true;
+		dtCFStats.Columns.Add("Node IPAddress", typeof(string));
+		dtCFStats.Columns.Add("KeySpace", typeof(string));
+		dtCFStats.Columns.Add("Table", typeof(string)).AllowDBNull = true;
+		dtCFStats.Columns.Add("Attribute", typeof(string));
+		dtCFStats.Columns.Add("Value", typeof(object));
+		dtCFStats.Columns.Add("Unit of Measure", typeof(string)).AllowDBNull = true;
+
+		dtCFStats.Columns.Add("Size in MB", typeof(decimal)).AllowDBNull = true;
+		dtCFStats.Columns.Add("(Value)", typeof(object));
+
+		//dtCFStats.PrimaryKey = new System.Data.DataColumn[] { dtFSStats.Columns[0],  dtFSStats.Columns[1],  dtFSStats.Columns[2],  dtFSStats.Columns[3], dtFSStats.Columns[4] };
+	}
+
+}
+
 void ReadCFStatsFileParseIntoDataTable(IFilePath cfstatsFilePath,
 										string ipAddress,
 										string dcName,
-										System.Data.DataTable dtFSStats,
+										System.Data.DataTable dtCFStats,
 										IEnumerable<string> ignoreKeySpaces,
 										IEnumerable<string> addToMBColumn)
 {
-	if (dtFSStats.Columns.Count == 0)
-	{
-		dtFSStats.Columns.Add("Data Center", typeof(string)).AllowDBNull = true;
-		dtFSStats.Columns.Add("Node IPAddress", typeof(string));
-		dtFSStats.Columns.Add("KeySpace", typeof(string));
-		dtFSStats.Columns.Add("Table", typeof(string)).AllowDBNull = true;
-		dtFSStats.Columns.Add("Attribute", typeof(string));
-		dtFSStats.Columns.Add("Value", typeof(object));
-		dtFSStats.Columns.Add("Unit of Measure", typeof(string)).AllowDBNull = true;
-
-		dtFSStats.Columns.Add("Size in MB", typeof(decimal)).AllowDBNull = true;
-		dtFSStats.Columns.Add("(Value)", typeof(object));
-
-		//dtFSStats.PrimaryKey = new System.Data.DataColumn[] { dtFSStats.Columns[0],  dtFSStats.Columns[1],  dtFSStats.Columns[2],  dtFSStats.Columns[3], dtFSStats.Columns[4] };
-	}
 	
+	initializeCFStatsDataTable(dtCFStats);
 	
 	var fileLines = cfstatsFilePath.ReadAllLines();
 	string line;
@@ -1705,7 +1793,7 @@ void ReadCFStatsFileParseIntoDataTable(IFilePath cfstatsFilePath,
 			}
 			else
 			{
-				dataRow = dtFSStats.NewRow();
+				dataRow = dtCFStats.NewRow();
 
 				dataRow["Data Center"] = dcName;
 				dataRow["Node IPAddress"] = ipAddress;
@@ -1747,9 +1835,27 @@ void ReadCFStatsFileParseIntoDataTable(IFilePath cfstatsFilePath,
 					dataRow["Unit of Measure"] = parsedLine[1];
 				}
 
-				dtFSStats.Rows.Add(dataRow);
+				dtCFStats.Rows.Add(dataRow);
 			}
 		}
+	}
+}
+
+void initializeTPStatsDataTable(DataTable dtTPStats)
+{
+	if (dtTPStats.Columns.Count == 0)
+	{
+		dtTPStats.Columns.Add("Data Center", typeof(string)).AllowDBNull = true;
+		dtTPStats.Columns.Add("Node IPAddress", typeof(string));
+		dtTPStats.Columns.Add("Attribute", typeof(string));
+
+		dtTPStats.Columns.Add("Active", typeof(long)).AllowDBNull = true;
+		dtTPStats.Columns.Add("Pending", typeof(long)).AllowDBNull = true;
+		dtTPStats.Columns.Add("Completed", typeof(long)).AllowDBNull = true;
+		dtTPStats.Columns.Add("Blocked", typeof(long)).AllowDBNull = true;
+		dtTPStats.Columns.Add("All time blocked", typeof(long)).AllowDBNull = true;
+		dtTPStats.Columns.Add("Dropped", typeof(long)).AllowDBNull = true;
+		dtTPStats.Columns.Add("Latency (ms)", typeof(int)).AllowDBNull = true;
 	}
 }
 
@@ -1758,27 +1864,8 @@ void ReadTPStatsFileParseIntoDataTable(IFilePath tpstatsFilePath,
 										string dcName,
 										System.Data.DataTable dtTPStats)
 {
-	if (dtTPStats.Columns.Count == 0)
-	{
-		dtTPStats.Columns.Add("Data Center", typeof(string));
-		dtTPStats.Columns[0].AllowDBNull = true;
-		dtTPStats.Columns.Add("Node IPAddress", typeof(string));
-		dtTPStats.Columns.Add("Attribute", typeof(string));
-		
-		dtTPStats.Columns.Add("Active", typeof(long));
-		dtTPStats.Columns["Active"].AllowDBNull = true;
-		dtTPStats.Columns.Add("Pending", typeof(long));
-		dtTPStats.Columns["Pending"].AllowDBNull = true;
-		dtTPStats.Columns.Add("Completed", typeof(long));
-		dtTPStats.Columns["Completed"].AllowDBNull = true;
-		dtTPStats.Columns.Add("Blocked", typeof(long));
-		dtTPStats.Columns["Blocked"].AllowDBNull = true;
-		dtTPStats.Columns.Add("All time blocked", typeof(long));
-		dtTPStats.Columns["All time blocked"].AllowDBNull = true;
-		dtTPStats.Columns.Add("Dropped", typeof(long));
-		dtTPStats.Columns["Dropped"].AllowDBNull = true;
-	}
-
+	
+	initializeTPStatsDataTable(dtTPStats);
 
 	var fileLines = tpstatsFilePath.ReadAllLines();
 	string line;
@@ -1843,7 +1930,8 @@ void ReadCassandraLogParseIntoDataTable(IFilePath clogFilePath,
 										int maxRowWrite,
 										System.Data.DataTable dtCLog,
 										out DateTime maxTimestamp,
-										int gcPausedFlagThresholdInMS = GCPausedFlagThresholdInMS)
+										int gcPausedFlagThresholdInMS = GCPausedFlagThresholdInMS,
+										int compactionFllagThresholdInMS = CompactionFlagThresholdInMS)
 {
 	if (dtCLog.Columns.Count == 0)
 	{
@@ -1871,7 +1959,7 @@ void ReadCassandraLogParseIntoDataTable(IFilePath clogFilePath,
 	int skipLines = -1;
 	string tableItem = null;
 	int tableItemPos = -1;
-	int tableItemValuePos = -1;
+	//int tableItemValuePos = -1;
 
 	maxTimestamp = DateTime.MinValue;
 	
@@ -1925,8 +2013,10 @@ void ReadCassandraLogParseIntoDataTable(IFilePath clogFilePath,
 		//INFO[AntiEntropyStage: 1] 2016 - 08 - 10 07:08:06, 219  RepairSession.java:171 - [repair #cde0eaa0-5ec0-11e6-8767-f5197346a00e] Received merkle tree for memberfundingeventaggregate from /10.211.34.165
 		//INFO[AntiEntropyStage: 1] 2016 - 08 - 10 07:08:06, 219  RepairSession.java:171 - [repair #cde0eaa0-5ec0-11e6-8767-f5197346a00e] Received merkle tree for memberfundingeventaggregate from /10.211.34.167
 		//INFO[RepairJobTask: 1] 2016 - 08 - 10 07:08:06, 219  Differencer.java:67 - [repair #cde0eaa0-5ec0-11e6-8767-f5197346a00e] Endpoints /10.211.34.150 and /10.211.34.164 are consistent for memberfundingeventaggregate
+		//ERROR [AntiEntropySessions:1857] 2016-06-10 21:56:53,281  RepairSession.java:276 - [repair #dc161200-2f4d-11e6-bd0c-93368bf2a346] Cannot proceed on repair because a neighbor (/10.27.34.54) is dead: session failed
+		//INFO  [CompactionExecutor:4657] 2016-06-12 06:26:25,534  CompactionTask.java:274 - Compacted 4 sstables to [/data/system/size_estimates-618f817b005f3678b8a453f3930b8e86/system-size_estimates-ka-11348,]. 2,270,620 bytes to 566,478 (~24% of original) in 342ms = 1.579636MB/s. 40 total partitions merged to 10. Partition merge counts were {4:10, }
 
-			  
+
 		#region Exception Log Info Parsing
 		if (parsedValues[0].ToLower().Contains("exception"))
 		{
@@ -1939,7 +2029,7 @@ void ReadCassandraLogParseIntoDataTable(IFilePath clogFilePath,
 										: parsedValues[0];
 				lastRow["Exception Description"] = line;
 
-				if (lastRow["Assocated Item"] == DBNull.Value)
+				if (lastRow["Assocated Value"] == DBNull.Value)
 				{
 					foreach (var element in parsedValues)
 					{
@@ -1947,7 +2037,7 @@ void ReadCassandraLogParseIntoDataTable(IFilePath clogFilePath,
                         {
 							if (LookForIPAddress(element.Substring(1,element.Length - 2).Trim(), ipAddress, out lineIPAddress))
 							{
-								lastRow["Assocated Item"] = lineIPAddress;
+								lastRow["Assocated Value"] = lineIPAddress;
 								break;
 							}
 						}
@@ -1955,7 +2045,7 @@ void ReadCassandraLogParseIntoDataTable(IFilePath clogFilePath,
                         {
 							if (LookForIPAddress(element, ipAddress, out lineIPAddress))
 							{
-								lastRow["Assocated Item"] = lineIPAddress;
+								lastRow["Assocated Value"] = lineIPAddress;
 								break;
 							}
 						}
@@ -1978,7 +2068,7 @@ void ReadCassandraLogParseIntoDataTable(IFilePath clogFilePath,
 										: parsedValues[2];
 				lastRow["Exception Description"] = line;
 
-				if (lastRow["Assocated Item"] == DBNull.Value)
+				if (lastRow["Assocated Value"] == DBNull.Value)
 				{
 					foreach (var element in parsedValues)
 					{
@@ -1986,7 +2076,7 @@ void ReadCassandraLogParseIntoDataTable(IFilePath clogFilePath,
                         {
 							if (LookForIPAddress(element.Substring(1, element.Length - 2).Trim(), ipAddress, out lineIPAddress))
 							{
-								lastRow["Assocated Item"] = lineIPAddress;
+								lastRow["Assocated Value"] = lineIPAddress;
 								break;
 							}
 						}
@@ -1994,7 +2084,7 @@ void ReadCassandraLogParseIntoDataTable(IFilePath clogFilePath,
                         {
 							if (LookForIPAddress(element, ipAddress, out lineIPAddress))
 							{
-								lastRow["Assocated Item"] = lineIPAddress;
+								lastRow["Assocated Value"] = lineIPAddress;
 								break;
 							}
 						}
@@ -2105,23 +2195,24 @@ void ReadCassandraLogParseIntoDataTable(IFilePath clogFilePath,
 
 		if (parsedValues[4] != tableItem)
 		{
-			tableItemPos = -1;
-			tableItemValuePos = -1;
-		}
-
-		var logDesc = new StringBuilder();
-		var startRange = parsedValues[5] == "-" ? 6 : 5;
-		int itemPos = -1;
-		int itemValuePos = -1;
-
-		if (parsedValues[startRange][0] == '(')
-		{
-			++startRange;
+			tableItemPos = -1;			
 		}
 		
 		#endregion
 
 		#region Describe Info
+
+		int itemPos = -1;
+		int itemValuePos = -1;
+
+		var logDesc = new StringBuilder();
+		var startRange = parsedValues[5] == "-" ? 6 : 5;
+
+		if (parsedValues[startRange][0] == '(')
+		{
+			++startRange;
+		}
+
 		for (int nCell = startRange; nCell < parsedValues.Count; ++nCell)
 		{
 			if (parsedValues[nCell].ToLower().Contains("exception"))
@@ -2178,6 +2269,8 @@ void ReadCassandraLogParseIntoDataTable(IFilePath clogFilePath,
 				//GCInspector.java (line 116) GC for ParNew: 394 ms for 1 collections, 13571498424 used; max is 25340346368
 				//GCInspector.java (line 119) GC forConcurrentMarkSweep: 15132 ms for 2 collections, 4229845696 used; max is 25125584896
 				//GCInspector.java:258 - G1 Young Generation GC in 264ms.  G1 Eden Space: 3470786560 -> 0; G1 Old Gen: 2689326672 -> 2934172000; G1 Survivor Space: 559939584 -> 35651584; 
+				//WARN [ScheduledTasks:1] 2013-04-10 10:18:14,403 GCInspector.java (line 145) Heap is 0.9610030442856479 full.  You may need to reduce memtable and/or cache sizes.  Cassandra will now flush up to the two largest memtables to free up memory.  Adjust flush_largest_memtables_at threshold in cassandra.yaml if you don't want Cassandra to do this automatically
+
 				if (nCell == itemPos)
 				{
 					var time = DetermineTime(parsedValues[nCell]);
@@ -2185,8 +2278,9 @@ void ReadCassandraLogParseIntoDataTable(IFilePath clogFilePath,
 					if (time is int && (int)time >= gcPausedFlagThresholdInMS)
 					{
 						dataRow["Flagged"] = true;
-						dataRow["Assocated Value"] = DetermineTime(parsedValues[nCell]);
+						dataRow["Assocated Item"] = "GC Pause";
 					}
+					dataRow["Assocated Value"] = time;
 				}
 				if (parsedValues[nCell] == "ParNew:"
 						|| parsedValues[nCell] == "forConcurrentMarkSweep:"
@@ -2197,6 +2291,18 @@ void ReadCassandraLogParseIntoDataTable(IFilePath clogFilePath,
 				else if (parsedValues[nCell] == "Young")
 				{
 					itemPos = nCell + 4;
+				}
+				else if (parsedValues[0] == "WARN" && parsedValues[nCell] == "Heap" &&  parsedValues[nCell + 3] == "full" )
+				{
+					decimal numValue;
+
+					if (decimal.TryParse(parsedValues[nCell], out numValue))
+					{
+						dataRow["Assocated Value"] = numValue;
+					}
+					
+					dataRow["Assocated Item"] = "Heap Full";
+					dataRow["Flagged"] = true;
 				}
 			}
 			else if (parsedValues[4] == "BatchStatement.java")
@@ -2254,6 +2360,52 @@ void ReadCassandraLogParseIntoDataTable(IFilePath clogFilePath,
 				{
 					itemPos = nCell + 8;
 					itemValuePos = nCell + 4;
+				}
+			}
+			else if (parsedValues[4] == "HintedHandoffMetrics.java")
+			{
+				//		WARN  [HintedHandoffManager:1] 2016-07-25 04:26:10,445  HintedHandoffMetrics.java:79 - /10.170.110.191 has 1711 dropped hints, because node is down past configured hint window.				
+				if (parsedValues[nCell] == "dropped")
+				{
+					dataRow["Assocated Item"] = "Dropped Hints";
+
+					if (LookForIPAddress(parsedValues[nCell - 3], ipAddress, out lineIPAddress))
+					{
+						dataRow["Assocated Value"] = lineIPAddress;
+					}
+				}
+			}
+			else if (parsedValues[4] == "StorageService.java")
+			{
+				//	WARN [ScheduledTasks:1] 2013-04-10 10:18:12,042 StorageService.java (line 2645) Flushing CFS(Keyspace='Company', ColumnFamily='01_Meta') to relieve memory pressure
+				if (nCell >= itemValuePos && parsedValues[nCell].Contains("Keyspace="))
+				{
+					nCell = -1;
+					var kstblValues = Common.StringFunctions.Split(parsedValues[nCell],
+																	new char[]{' ', ',', '=', '(', ')'},
+																	Common.StringFunctions.IgnoreWithinDelimiterFlag.Text,
+																	Common.StringFunctions.SplitBehaviorOptions.Default | Common.StringFunctions.SplitBehaviorOptions.RemoveEmptyEntries);
+					string ksName = null;
+					string tblName = null;
+
+					for(int nIndex = 0; nIndex < kstblValues.Count; ++nIndex)
+					{
+						if (kstblValues[nIndex] == "Keyspace")
+						{
+							ksName = kstblValues[++nIndex];
+						}
+						else if (kstblValues[nIndex] == "ColumnFamily")
+						{
+							tblName = kstblValues[++nIndex];
+						}
+					}
+					
+					dataRow["Assocated Value"] = ksName + "." + tblName;					
+				}
+				if (parsedValues[0] == "WARN" && parsedValues[nCell] == "Flushing")
+				{
+					dataRow["Assocated Item"] = "Flushing CFS";
+					itemValuePos = nCell + 1;
 				}
 			}
 			else if (parsedValues[4] == "StatusLogger.java")
@@ -2327,9 +2479,54 @@ void ReadCassandraLogParseIntoDataTable(IFilePath clogFilePath,
 					itemPos = nCell + 8;
 				}
 			}
+			else if (parsedValues[4] == "CompactionTask.java")
+			{
+				//INFO  [CompactionExecutor:4657] 2016-06-12 06:26:25,534  CompactionTask.java:274 - Compacted 4 sstables to [/data/system/size_estimates-618f817b005f3678b8a453f3930b8e86/system-size_estimates-ka-11348,]. 2,270,620 bytes to 566,478 (~24% of original) in 342ms = 1.579636MB/s. 40 total partitions merged to 10. Partition merge counts were {4:10, }
+
+				if (nCell == itemValuePos)
+				{
+					var time = DetermineTime(parsedValues[nCell]);
+
+					if (time is int && (int)time >= compactionFllagThresholdInMS)
+					{
+						dataRow["Flagged"] = true;		
+						dataRow["Assocated Item"] = "Compaction Pause";
+					}
+					dataRow["Assocated Value"] = time;
+				}
+				else if (parsedValues[nCell] == "Compacted")
+				{					
+					itemValuePos = nCell + 11;
+					dataRow["Assocated Item"] = "Compaction";
+				}
+			}
+			else if (parsedValues[4] == "RepairSession.java" || parsedValues[4] == "RepairJob.java")
+			{
+				//ERROR [AntiEntropySessions:1857] 2016-06-10 21:56:53,281  RepairSession.java:276 - [repair #dc161200-2f4d-11e6-bd0c-93368bf2a346] Cannot proceed on repair because a neighbor (/10.27.34.54) is dead: session failed
+				//INFO[AntiEntropySessions: 9665] 2016 - 08 - 10 07:08:06, 218  RepairJob.java:163 - [repair #cde0eaa0-5ec0-11e6-8767-f5197346a00e] requesting merkle trees for memberfundingeventaggregate (to [/10.211.34.167, /10.211.34.165, /10.211.34.164, /10.211.34.158, /10.211.34.150])
+
+				if (parsedValues[0] == "ERROR")
+				{					
+					if (parsedValues[nCell] == "Failed")
+					{
+						dataRow["Assocated Item"] = "Read Repair Failed";
+						dataRow["Flagged"] = true;
+						itemPos = 0;
+					}
+					else if(itemPos == -1 && dataRow["Assocated Item"] == DBNull.Value)
+					{
+						dataRow["Assocated Item"] = "Read Repair Error";
+					}
+				}
+				
+				if (parsedValues[nCell].StartsWith("[repair "))
+				{
+					dataRow["Assocated Value"] = parsedValues[nCell];
+				}
+			}
 			else if (LookForIPAddress(parsedValues[nCell], ipAddress, out lineIPAddress))
 			{
-				dataRow["Assocated Item"] = lineIPAddress;
+				dataRow["Assocated Value"] = lineIPAddress;
 			}
 			
 
@@ -3749,13 +3946,18 @@ static Regex RegExTblLine = new Regex(@"\s*(.+)\s+(\d+)\s*,\s*(\d+)\s*",
 										RegexOptions.IgnoreCase | RegexOptions.Compiled);
 static Regex RegExPool2Line = new Regex(@"\s*(\w+)\s+(\w+/\w+|\d+)\s+(\w+/\w+|\d+).*",
 										RegexOptions.IgnoreCase | RegexOptions.Compiled);
-										
+static Regex RegExCompactionTaskCompletedLine = new Regex(@"Compacted\s+(\d+)\s+sstables.+\[\s*(.+)\,\s*\]\.\s+(.+)\s+bytes to (.+)\s+\(\s*(.+)\s*\%.+in\s+(.+)\s*ms\s+=\s+(.+)\s*MB/s.\s+(\d+).+merged to\s+(\d+).+were\s+\{\s*(.+)\,\s*\}",
+										RegexOptions.IgnoreCase | RegexOptions.Compiled);
+
 void ParseCassandraLogIntoStatusLogDataTable(DataTable dtroCLog,
 												DataTable dtCStatusLog,
+												DataTable dtCFStats,
+												DataTable dtTPStats,
 												Common.Patterns.Collections.ThreadSafe.Dictionary<string,string> dictGCIno,
 												string ipAddress,
 												string dcName,
-												List<string> ignoreKeySpaces)
+												List<string> ignoreKeySpaces,
+												List<CKeySpaceTableNames> kstblExists)
 {
 	//GCInspector.java:258 - G1 Young Generation GC in 691ms.  G1 Eden Space: 4,682,940,416 -> 0; G1 Old Gen: 2,211,450,256 -> 2,797,603,280; G1 Survivor Space: 220,200,960 -> 614,465,536; 
 	//GCInspector.java:258 - G1 Young Generation GC in 277ms. G1 Eden Space: 4047503360 -> 0; G1 Old Gen: 2855274656 -> 2855274648;
@@ -3771,6 +3973,9 @@ void ParseCassandraLogIntoStatusLogDataTable(DataTable dtroCLog,
 	//
 	//StatusLogger.java:112 - ColumnFamily                Memtable ops,data
 	//StatusLogger.java:115 - dse_perf.node_slow_log            2120,829964
+	//
+	//CompactionTask.java - Compacted 4 sstables to [/data/system/size_estimates-618f817b005f3678b8a453f3930b8e86/system-size_estimates-ka-11348,]. 2,270,620 bytes to 566,478 (~24% of original) in 342ms = 1.579636MB/s. 40 total partitions merged to 10. Partition merge counts were {4:10, }
+
 	if (dtCStatusLog.Columns.Count == 0)
 	{
 		dtCStatusLog.Columns.Add("Timestamp", typeof(DateTime));		
@@ -3796,7 +4001,15 @@ void ParseCassandraLogIntoStatusLogDataTable(DataTable dtroCLog,
 		dtCStatusLog.Columns.Add("KeysToSave", typeof(string)).AllowDBNull = true; //u
 		dtCStatusLog.Columns.Add("MemTable OPS", typeof(long)).AllowDBNull = true; //v
 		dtCStatusLog.Columns.Add("Data (mb)", typeof(decimal)).AllowDBNull = true; //w
-		
+
+		dtCStatusLog.Columns.Add("SSTables", typeof(int)).AllowDBNull = true; //x
+		dtCStatusLog.Columns.Add("From (mb)", typeof(decimal)).AllowDBNull = true; //y
+		dtCStatusLog.Columns.Add("To (mb)", typeof(decimal)).AllowDBNull = true;//z
+		dtCStatusLog.Columns.Add("Latancy (ms)", typeof(int)).AllowDBNull = true; //aa
+		dtCStatusLog.Columns.Add("Rate (MB/s)", typeof(decimal)).AllowDBNull = true; //ab
+		dtCStatusLog.Columns.Add("Partitions Merged", typeof(string)).AllowDBNull = true; //ac
+		dtCStatusLog.Columns.Add("Merge Counts", typeof(string)).AllowDBNull = true; //ad
+
 		dtCStatusLog.DefaultView.Sort = "[Timestamp] DESC, [Data Center], [Pool/Cache Type], [KeySpace], [Table], [Node IPAddress]";
 	}
 	
@@ -3818,9 +4031,11 @@ void ParseCassandraLogIntoStatusLogDataTable(DataTable dtroCLog,
 		//		dtCLog.Columns.Add("Flagged", typeof(bool)).AllowDBNull = true;
 		
 		var statusLogView = new DataView(dtroCLog,
-											"[Item] in ('GCInspector.java', 'StatusLogger.java')",
+											"[Item] in ('GCInspector.java', 'StatusLogger.java', 'CompactionTask.java')",
 											"[TimeStamp] ASC, [Item] ASC",
 											DataViewRowState.CurrentRows);
+		var gcLatencies = new List<int>();
+		var compactionLatencies = new List<Tuple<string,string,int>>();
 			
 		string item;
 		
@@ -3835,6 +4050,7 @@ void ParseCassandraLogIntoStatusLogDataTable(DataTable dtroCLog,
 
 			if (item == "GCInspector.java")
 			{
+			#region GCInspector.java
 				processingPool = false;
 				processingCache = false;
 				processingTable = false;
@@ -3850,14 +4066,16 @@ void ParseCassandraLogIntoStatusLogDataTable(DataTable dtroCLog,
 				{
 					var splits = RegExGCLine.Split(descr);
 					var dataRow = dtCStatusLog.NewRow();
-
+					var time = DetermineTime(splits[1]);
+					
 					dataRow["Timestamp"] = vwDataRow["Timestamp"];
 					dataRow["Data Center"] = dcName;
 					dataRow["Node IPAddress"] = ipAddress;
 					dataRow["Pool/Cache Type"] = "GC-ParNew";
-					dataRow["GC Time (ms)"] = DetermineTime(splits[1]);
+					dataRow["GC Time (ms)"] = time;
 					
 					dtCStatusLog.Rows.Add(dataRow);
+					gcLatencies.Add((int) time);
 					
 					dictGCIno.TryAdd((dcName == null ? string.Empty : dcName)  + "|" + ipAddress, "GC-ParNew");
 				}
@@ -3865,12 +4083,13 @@ void ParseCassandraLogIntoStatusLogDataTable(DataTable dtroCLog,
 				{
 					var splits = RegExGCMSLine.Split(descr);
 					var dataRow = dtCStatusLog.NewRow();
+					var time = DetermineTime(splits[1]);
 
 					dataRow["Timestamp"] = vwDataRow["Timestamp"];
 					dataRow["Data Center"] = dcName;
 					dataRow["Node IPAddress"] = ipAddress;
 					dataRow["Pool/Cache Type"] = "GC-CMS";
-					dataRow["GC Time (ms)"] = DetermineTime(splits[1]);
+					dataRow["GC Time (ms)"] = time;
 					
 					if (splits.Length >= 4 && !string.IsNullOrEmpty(splits[2]))
 					{
@@ -3884,18 +4103,21 @@ void ParseCassandraLogIntoStatusLogDataTable(DataTable dtroCLog,
 					}
 					
 					dtCStatusLog.Rows.Add(dataRow);
+					gcLatencies.Add((int) time);
+					
 					dictGCIno.AddOrUpdate((dcName == null ? string.Empty : dcName) + "|" + ipAddress, "GC-CMS", (item1,item2) => "GC-CMS");
 				}
 				else if (descr.TrimStart().StartsWith("G1 Young Generation GC in"))
 				{
 					var splits = RegExG1Line.Split(descr);
 					var dataRow = dtCStatusLog.NewRow();
+					var time = DetermineTime(splits[1]);
 
 					dataRow["Timestamp"] = vwDataRow["Timestamp"];
 					dataRow["Data Center"] = dcName;
 					dataRow["Node IPAddress"] = ipAddress;
 					dataRow["Pool/Cache Type"] = "GC-G1";
-					dataRow["GC Time (ms)"] = DetermineTime(splits[1]);
+					dataRow["GC Time (ms)"] = time;
 
 					if (splits.Length >= 4 && !string.IsNullOrEmpty(splits[2]))
 					{
@@ -3914,13 +4136,17 @@ void ParseCassandraLogIntoStatusLogDataTable(DataTable dtroCLog,
 					}
 
 					dtCStatusLog.Rows.Add(dataRow);
+					gcLatencies.Add((int) time);
+					
 					dictGCIno.AddOrUpdate((dcName == null ? string.Empty : dcName)  + "|" + ipAddress, "GC-C1", (item1,item2) => "GC-G1");
 				}
 
 				continue;
+			#endregion
 			}
 			else if (item == "StatusLogger.java")
 			{
+			#region StatusLogger.java
 				var descr = vwDataRow["Description"] as string;
 
 				if (string.IsNullOrEmpty(descr))
@@ -4040,6 +4266,47 @@ void ParseCassandraLogIntoStatusLogDataTable(DataTable dtroCLog,
 					dtCStatusLog.Rows.Add(dataRow);
 					continue;
 				}
+				#endregion
+			}
+			else if (item == "CompactionTask.java")
+			{
+			#region CompactionTask
+				var descr = vwDataRow["Description"] as string;
+				var splits = RegExCompactionTaskCompletedLine.Split(descr);
+
+				if (splits.Length == 12)
+				{
+					var fileNamePos = ((string)splits[2]).LastIndexOf('/');
+					var ssTableFileName = ((string)splits[2]).Substring(fileNamePos + 1);
+					var ksItem = kstblExists
+									.Where(e => ssTableFileName.StartsWith(e.LogName))
+									.OrderByDescending(e => e.LogName.Length).FirstOrDefault();
+
+					if (ksItem != null)
+					{
+						var dataRow = dtCStatusLog.NewRow();
+						var time = DetermineTime(splits[6]);
+		
+						dataRow["Timestamp"] = vwDataRow["Timestamp"];
+						dataRow["Data Center"] = dcName;
+						dataRow["Node IPAddress"] = ipAddress;
+						dataRow["Pool/Cache Type"] = "Compaction";
+
+						dataRow["KeySpace"] = ksItem.KeySpaceName;
+						dataRow["Table"] = ksItem.TableName;
+						dataRow["SSTables"] = int.Parse(splits[1].Replace(",", string.Empty));
+						dataRow["From (mb)"] = ConvertInToMB(splits[3], "bytes");
+						dataRow["To (mb)"] = ConvertInToMB(splits[4], "bytes");
+						dataRow["Latancy (ms)"] = time;
+						dataRow["Rate (MB/s)"] = decimal.Parse(splits[7].Replace(",", string.Empty));
+						dataRow["Partitions Merged"] = splits[8] + ":" + splits[9];
+						dataRow["Merge Counts"] = splits[10];
+
+						dtCStatusLog.Rows.Add(dataRow);
+						compactionLatencies.Add(new Tuple<string,string,int>(ksItem.KeySpaceName, ksItem.TableName, (int) time));
+					}
+				}
+			#endregion
 			}
 			else
 			{
@@ -4049,6 +4316,145 @@ void ParseCassandraLogIntoStatusLogDataTable(DataTable dtroCLog,
 			}
 
 		}
+
+		if (dtCFStats != null)
+		{
+			initializeCFStatsDataTable(dtCFStats);
+			
+		}
+
+	#region Add TP/CF Stats Info
+	
+		if (dtTPStats != null && gcLatencies.Count > 0)
+		{
+			initializeTPStatsDataTable(dtTPStats);
+
+			gcLatencies.RemoveAll(x => x <= 0);
+
+			if (gcLatencies.Count > 0)
+			{
+				var gcMax = gcLatencies.Max();
+				var gcMin = gcLatencies.Min();
+				var gcAvg = (int)gcLatencies.Average();
+
+				var dataRow = dtTPStats.NewRow();
+
+				dataRow["Data Center"] = dcName;
+				dataRow["Node IPAddress"] = ipAddress;
+				dataRow["Attribute"] = "GC minimum latencty";
+				dataRow["Latency (ms)"] = gcMin;
+
+				dtTPStats.Rows.Add(dataRow);
+
+				dataRow = dtTPStats.NewRow();
+
+				dataRow["Data Center"] = dcName;
+				dataRow["Node IPAddress"] = ipAddress;
+				dataRow["Attribute"] = "GC maximum latencty";
+				dataRow["Latency (ms)"] = gcMax;
+
+				dtTPStats.Rows.Add(dataRow);
+
+				dataRow = dtTPStats.NewRow();
+
+				dataRow["Data Center"] = dcName;
+				dataRow["Node IPAddress"] = ipAddress;
+				dataRow["Attribute"] = "GC mean latencty";
+				dataRow["Latency (ms)"] = gcAvg;
+
+				dtTPStats.Rows.Add(dataRow);
+			}
+		}
+
+		if (dtCFStats != null && compactionLatencies.Count > 0)
+		{
+			initializeCFStatsDataTable(dtCFStats);
+			
+			compactionLatencies.RemoveAll(x => x.Item3 <= 0);
+
+			if (compactionLatencies.Count > 0)
+			{
+				var compMax = from cmpItem in compactionLatencies
+							  group cmpItem by new { cmpItem.Item1, cmpItem.Item2 }
+							  	into g
+							  select new
+							  {
+							  	KeySpace = g.Key.Item1,
+								  Table = g.Key.Item2,
+								  Max = g.Max(s => s.Item3)
+							  };
+				var compMin = from cmpItem in compactionLatencies
+							  group cmpItem by new { cmpItem.Item1, cmpItem.Item2 }
+							  	into g
+							  select new
+							  {
+							  	KeySpace = g.Key.Item1,
+								  Table = g.Key.Item2,
+								  Min = g.Min(s => s.Item3)
+							  };
+
+				var compAvg = from cmpItem in compactionLatencies
+							  group cmpItem by new { cmpItem.Item1, cmpItem.Item2 }
+							  	into g
+							  select new
+							  {
+							  	KeySpace = g.Key.Item1,
+								  Table = g.Key.Item2,
+								  Avg = (int)g.Average(s => s.Item3)
+							  };
+
+				foreach (var statItem in compMax)
+				{
+					var dataRow = dtCFStats.NewRow();
+
+					dataRow["Data Center"] = dcName;
+					dataRow["Node IPAddress"] = ipAddress;
+					dataRow["KeySpace"] = statItem.KeySpace;
+					dataRow["Table"] = statItem.Table;
+					dataRow["Attribute"] = "Compacted maximum latencty";
+					dataRow["Value"] = statItem.Max;
+					dataRow["(Value)"] = statItem.Max;
+					dataRow["Unit of Measure"] = "ms";
+
+					dtCFStats.Rows.Add(dataRow);
+				}
+
+				foreach (var statItem in compMin)
+				{
+					var dataRow = dtCFStats.NewRow();
+
+					dataRow["Data Center"] = dcName;
+					dataRow["Node IPAddress"] = ipAddress;
+					dataRow["KeySpace"] = statItem.KeySpace;
+					dataRow["Table"] = statItem.Table;
+					dataRow["Attribute"] = "Compacted minimum latencty";
+					dataRow["Value"] = statItem.Min;
+					dataRow["(Value)"] = statItem.Min;
+					dataRow["Unit of Measure"] = "ms";
+
+					dtCFStats.Rows.Add(dataRow);
+				}
+
+				foreach (var statItem in compAvg)
+				{
+					var dataRow = dtCFStats.NewRow();
+
+					dataRow["Data Center"] = dcName;
+					dataRow["Node IPAddress"] = ipAddress;
+					dataRow["KeySpace"] = statItem.KeySpace;
+					dataRow["Table"] = statItem.Table;
+					dataRow["Attribute"] = "Compacted mean latencty";
+					dataRow["Value"] = statItem.Avg;
+					dataRow["(Value)"] = statItem.Avg;
+					dataRow["Unit of Measure"] = "ms";
+
+					dtCFStats.Rows.Add(dataRow);
+				}
+			}
+		}
+
+	#endregion
+	
 	}
 }
 
@@ -4420,6 +4826,28 @@ void UpdateMachineInfo(System.Data.DataTable dtOSMachineInfo,
 
 #region Helper Functions
 
+class CKeySpaceTableNames
+{
+	public CKeySpaceTableNames (string ksName, string tblName)
+	{
+		this.KeySpaceName = ksName;
+		this.TableName = tblName;
+	}
+
+	public CKeySpaceTableNames(DataRow dataRow)
+	{
+		this.KeySpaceName = dataRow["Keyspace Name"] as string;
+		this.TableName = dataRow["Name"] as string;
+	}
+
+	public string KeySpaceName;
+	public string TableName;
+
+	public string NormalizedName { get { return this.KeySpaceName + "." + this.TableName; } }
+	public string LogName { get { return this.KeySpaceName + "-" + this.TableName + "-"; }}
+		
+}
+
 bool LookForIPAddress(string value, string ignoreIPAddress, out string ipAddress)
 {
 
@@ -4486,7 +4914,26 @@ bool LookForIPAddress(string value, string ignoreIPAddress, out string ipAddress
 			}
 		}
 	}
-	
+	else if (value[0] == '(')
+	{
+		var newValue = value.Substring(1);
+
+		if (newValue[newValue.Length - 1] == ')')
+		{
+			newValue = newValue.Substring(0, newValue.Length - 1);
+		}
+
+		var items = newValue.Split(new char[] { ' ', ',', '>' });
+
+		foreach (var element in items)
+		{
+			if (LookForIPAddress(element, ignoreIPAddress, out ipAddress))
+			{
+				return true;
+			}
+		}
+	}
+
 	ipAddress = null;
 	return false;
 }
@@ -4763,7 +5210,7 @@ string RemoveCommentInLine(string line, char commentChar = '#')
 
 object DetermineTime(string strTime)
 {
-	var timeAbbrPos = strTime.LastIndexOfAny(new char[] { 'm', 's', 'h' });
+	var timeAbbrPos = strTime.IndexOfAny(new char[] { 'm', 's', 'h' });
 	object numTime;
 	
 	if (timeAbbrPos > 0)
