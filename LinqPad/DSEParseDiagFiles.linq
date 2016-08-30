@@ -71,8 +71,8 @@ void Main()
 	var excelTrmplateFilePath = @"[MyDocuments]\LINQPad Queries\DataStax\dseTemplate.xlsx"; 
 	
 	//Location where this application will write or update the Excel file.
-	var excelFilePath = @"[DeskTop]\Test.xlsx"; //<==== Should be updated
-	//var excelFilePath = @"[DeskTop]\Tsulis.xlsx";
+	//var excelFilePath = @"[DeskTop]\Test.xlsx"; //<==== Should be updated
+	var excelFilePath = @"[DeskTop]\Tsulis.xlsx";
 	
 	//If diagnosticNoSubFolders is false:
 	//Directory where files are located to parse DSE diagnostics files produced by DataStax OpsCenter diagnostics or a special directory structure where DSE diagnostics information is placed.
@@ -94,8 +94,8 @@ void Main()
 	//	All diagnostic files are located directly under diagnosticPath folder. Each file should have the IP Adress either in the beginning or end of the file name.
 	//		e.g., cfstats_10.192.40.7, system-10.192.40.7.log, 10.192.40.7_system.log, etc.
 	//var diagnosticPath = @"[MyDocuments]\LINQPad Queries\DataStax\TestData\gamingactivity-diagnostics-2016_08_10_08_45_40_UTC";
-	var diagnosticPath = @"[MyDocuments]\LINQPad Queries\DataStax\TestData\production_group_v_1-diagnostics-2016_07_04_15_43_48_UTC"; 
-	//var diagnosticPath = @"[MyDocuments]\LINQPad Queries\DataStax\TestData\na1_v_prd_green-diagnostics-2016_08_19_20_22_55_UTC";
+	//var diagnosticPath = @"[MyDocuments]\LINQPad Queries\DataStax\TestData\production_group_v_1-diagnostics-2016_07_04_15_43_48_UTC"; 
+	var diagnosticPath = @"[MyDocuments]\LINQPad Queries\DataStax\TestData\na1_v_prd_green-diagnostics-2016_08_19_20_22_55_UTC";
 	//@"C:\Users\richard\Desktop\datastax"; 
 	var diagnosticNoSubFolders = false; //<==== Should be Updated 
 	var parseLogs = true;
