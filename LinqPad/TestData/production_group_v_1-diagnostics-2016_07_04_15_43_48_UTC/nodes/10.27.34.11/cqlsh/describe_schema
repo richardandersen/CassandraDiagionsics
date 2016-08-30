@@ -802,4 +802,53 @@ CREATE TABLE dse_system.real_leaders (
     AND min_index_interval = 128
     AND read_repair_chance = 0.0
     AND speculative_retry = '99.0PERCENTILE';
+    
+CREATE KEYSPACE lcsv2_preprod WITH replication = {'class': 'EverywhereStrategy'}  AND durable_writes = true;
 
+CREATE TABLE lcsv2_preprod.file_coords_to_revision_index (
+    key_file text,
+    cipher text,
+    strength int,
+    key_id timeuuid,
+    key text,
+    PRIMARY KEY (key_file, cipher, strength, key_id)
+) WITH CLUSTERING ORDER BY (cipher ASC, strength ASC, key_id ASC)
+    AND bloom_filter_fp_chance = 0.01
+    AND caching = '{"keys":"ALL", "rows_per_partition":"NONE"}'
+    AND comment = ''
+    AND compaction = {'class': 'org.apache.cassandra.db.compaction.SizeTieredCompactionStrategy'}
+    AND compression = {'sstable_compression': 'org.apache.cassandra.io.compress.LZ4Compressor'}
+    AND dclocal_read_repair_chance = 0.1
+    AND default_time_to_live = 0
+    AND gc_grace_seconds = 864000
+    AND max_index_interval = 2048
+    AND memtable_flush_period_in_ms = 0
+    AND min_index_interval = 128
+    AND read_repair_chance = 0.0
+    AND speculative_retry = '99.0PERCENTILE';
+
+CREATE INDEX artifact_type_ndx ON lcsv2_preprod.file_coords_to_revision_index (strength);
+
+CREATE KEYSPACE a123456789012345678912345z WITH replication = {'class': 'EverywhereStrategy'}  AND durable_writes = true;
+
+CREATE TABLE a123456789012345678912345z.a12345678901234567890123456789z (
+    key_file text,
+    cipher text,
+    strength int,
+    key_id timeuuid,
+    key text,
+    PRIMARY KEY (key_file, cipher, strength, key_id)
+) WITH CLUSTERING ORDER BY (cipher ASC, strength ASC, key_id ASC)
+    AND bloom_filter_fp_chance = 0.01
+    AND caching = '{"keys":"ALL", "rows_per_partition":"NONE"}'
+    AND comment = ''
+    AND compaction = {'class': 'org.apache.cassandra.db.compaction.SizeTieredCompactionStrategy'}
+    AND compression = {'sstable_compression': 'org.apache.cassandra.io.compress.LZ4Compressor'}
+    AND dclocal_read_repair_chance = 0.1
+    AND default_time_to_live = 0
+    AND gc_grace_seconds = 864000
+    AND max_index_interval = 2048
+    AND memtable_flush_period_in_ms = 0
+    AND min_index_interval = 128
+    AND read_repair_chance = 0.0
+    AND speculative_retry = '99.0PERCENTILE';

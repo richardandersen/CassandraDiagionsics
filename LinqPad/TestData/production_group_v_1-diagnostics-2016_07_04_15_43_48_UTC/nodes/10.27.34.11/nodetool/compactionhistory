@@ -657,3 +657,6 @@ e9def830-3e92-11e6-adbd-0fa082120add     system             peer_events         
 2e16bfa0-3e99-11e6-adbd-0fa082120add     OpsCenter          rollups60                    1467273830554             336218865      335420369      {4:3300}
 17dd49c0-4092-11e6-adbd-0fa082120add     production_mqh_bi  bi_newdata                   1467490689116             2594589037     2594437654     {1:4131, 2:1}
 b2034420-3eb5-11e6-adbd-0fa082120add     dse_perf           write_latency_histograms     1467286077794             30945711       78520          {2:25}
+b9d18750-6c57-11e6-b004-9db7d3ae6caa     lcsv2_preprod      file_coords_to_revision_index1472303471685             7750133        7748558        {1:29, 2:19, 3:2, 4:2, 5:5, 6:1, 9:4}
+c21bc011-685b-11e6-8564-9db7d3ae6caa     lcsv2_preprod      file_coords_to_revision_index.artifact_type_ndx1471865398929             34713158       34307303       {4:8}
+c21bc011-685b-11e6-8564-9db7d3ae6caa     a123456789012345678912345za12345678901234567890123456789z 1471865398929             34713158       34307303       {4:8}
