@@ -95,7 +95,7 @@ void Main()
 	//		e.g., cfstats_10.192.40.7, system-10.192.40.7.log, 10.192.40.7_system.log, etc.
 	//var diagnosticPath = @"[MyDocuments]\LINQPad Queries\DataStax\TestData\gamingactivity-diagnostics-2016_08_10_08_45_40_UTC";
 	//var diagnosticPath = @"[MyDocuments]\LINQPad Queries\DataStax\TestData\production_group_v_1-diagnostics-2016_07_04_15_43_48_UTC"; 
-	var diagnosticPath = @"[MyDocuments]\LINQPad Queries\DataStax\TestData\na1_v_prd_green-diagnostics-2016_08_19_20_22_55_UTC";
+	var diagnosticPath = @"[MyDocuments]\LINQPad Queries\DataStax\TestData\na1_v_prd_green-diagnostics-2016_08_30_19_08_03_UTC";
 	//@"C:\Users\richard\Desktop\datastax"; 
 	var diagnosticNoSubFolders = false; //<==== Should be Updated 
 	var parseLogs = true;
@@ -979,12 +979,20 @@ void Main()
 												workSheet.Cells["F1:F2"].Style.Border.Left.Style = OfficeOpenXml.Style.ExcelBorderStyle.Medium;
 												workSheet.Cells["H1:H2"].Style.Border.Right.Style = OfficeOpenXml.Style.ExcelBorderStyle.Medium;
 
+												workSheet.Cells["J1:M1"].Style.WrapText = true;
+												workSheet.Cells["J1:M1"].Merge = true;
+												workSheet.Cells["J1:M1"].Value = "Column Counts";
+												workSheet.Cells["J1:J2"].Style.Border.Left.Style = OfficeOpenXml.Style.ExcelBorderStyle.Medium;
+												workSheet.Cells["M1:M2"].Style.Border.Right.Style = OfficeOpenXml.Style.ExcelBorderStyle.Medium;
+
 												workSheet.View.FreezePanes(3, 1);
 												workSheet.Cells["F:F"].Style.Numberformat.Format = "0%";
 												workSheet.Cells["G:G"].Style.Numberformat.Format = "0%";
 												workSheet.Cells["I:I"].Style.Numberformat.Format = "d hh:mm";
 												workSheet.Cells["J:J"].Style.Numberformat.Format = "###";
 												workSheet.Cells["K:K"].Style.Numberformat.Format = "###";
+												workSheet.Cells["L:L"].Style.Numberformat.Format = "###";
+												workSheet.Cells["M:M"].Style.Numberformat.Format = "###";
 												workSheet.Cells["A2:M2"].AutoFilter = true;
 
 												workSheet.Cells["H2"].AddComment("speculative_retry -- To override normal read timeout when read_repair_chance is not 1.0, sending another request to read, choose one of these values and use the property to create or alter the table: \"ALWAYS\" -- Retry reads of all replicas, \"Xpercentile\" -- Retry reads based on the effect on throughput and latency, \"Yms\" -- Retry reads after specified milliseconds, \"NONE\" -- Do not retry reads. Using the speculative retry property, you can configure rapid read protection in Cassandra 2.0.2 and later.Use this property to retry a request after some milliseconds have passed or after a percentile of the typical read latency has been reached, which is tracked per table.", "Richard Andersen");
@@ -2800,6 +2808,8 @@ void ReadCassandraLogParseIntoDataTable(IFilePath clogFilePath,
 
 static Regex RegExCreateIndex = new Regex(@"\s*create\s+(?:custom\s*)?index\s+(.+)?\s*on\s+(.+)\s+\(\s*(?:(?:keys\(\s*(.+)\s*\))?|(?:entries\(\s*(.+)\s*\))?|(?:full\(\s*(.+)\s*\))?|(.+)?)\).*",
 										RegexOptions.IgnoreCase | RegexOptions.Compiled);
+static Regex RegExCreateIndexUsing = new Regex(@".+using\s*((?:'|""|`)?.+?(?:'|""|`))?",
+										RegexOptions.IgnoreCase | RegexOptions.Compiled);
 										
 void ReadCQLDDLParseIntoDataTable(IFilePath cqlDDLFilePath,
 									string IPAddress,
@@ -2835,8 +2845,10 @@ void ReadCQLDDLParseIntoDataTable(IFilePath cqlDDLFilePath,
 		dtTable.Columns.Add("GC Grace Period", typeof(TimeSpan)).AllowDBNull = true;//i
 		dtTable.Columns.Add("Collections", typeof(int));//j
 		dtTable.Columns.Add("Counters", typeof(int));//k
-		dtTable.Columns.Add("Assocated Table", typeof(string)).AllowDBNull = true;//l
-		dtTable.Columns.Add("DDL", typeof(string));
+		dtTable.Columns.Add("Blobs", typeof(int));//l
+		dtTable.Columns.Add("Total", typeof(int));//m
+		dtTable.Columns.Add("Assocated Table", typeof(string)).AllowDBNull = true;//n
+		dtTable.Columns.Add("DDL", typeof(string));//o
 		
 		dtTable.PrimaryKey = new System.Data.DataColumn[] { dtTable.Columns["Keyspace Name"], dtTable.Columns["Name"] };
 	}
@@ -3047,7 +3059,6 @@ void ReadCQLDDLParseIntoDataTable(IFilePath cqlDDLFilePath,
 						dataRow["Cluster Key"] = null;
 					}
 					
-					//Looking for collection/counter cvolumns
 					endParan = tblColumns.Count;
 
 					if (tblColumns.Last().StartsWith("PRIMARY KEY", StringComparison.OrdinalIgnoreCase)
@@ -3058,6 +3069,7 @@ void ReadCQLDDLParseIntoDataTable(IFilePath cqlDDLFilePath,
 
 					int nbrCollections = 0;
 					int nbrCounters = 0;
+					int nbrBlobs = 0;
 					
 					for (int nIndex = 0; nIndex < endParan; ++nIndex)
 					{
@@ -3070,6 +3082,11 @@ void ReadCQLDDLParseIntoDataTable(IFilePath cqlDDLFilePath,
 						{
 							++nbrCounters;
 						}
+						else
+						if (tblColumns[nIndex].EndsWith(" blob", StringComparison.OrdinalIgnoreCase))
+						{
+							++nbrBlobs;
+						}
 						else if (tblColumns[nIndex].EndsWith(" list", StringComparison.OrdinalIgnoreCase)
 									|| tblColumns[nIndex].EndsWith(" map", StringComparison.OrdinalIgnoreCase)
 									|| tblColumns[nIndex].EndsWith(" set", StringComparison.OrdinalIgnoreCase))
@@ -3080,6 +3097,8 @@ void ReadCQLDDLParseIntoDataTable(IFilePath cqlDDLFilePath,
 					
 					dataRow["Collections"] = nbrCollections;
 					dataRow["Counters"] = nbrCounters;
+					dataRow["Blobs"] = nbrCounters;
+					dataRow["Total"] = endParan;
 					
 					//parse options...
 					parsedComponent = Common.StringFunctions.Split(strOtpsTbl.Substring(5).TrimStart(),
@@ -3170,6 +3189,7 @@ void ReadCQLDDLParseIntoDataTable(IFilePath cqlDDLFilePath,
 					//CREATE INDEX ON users (phones);
 					//CREATE INDEX todo_dates ON users (KEYS(todo));
 					//CREATE CUSTOM INDEX ON users (email) USING 'path.to.the.IndexClass' WITH OPTIONS = {'storage': '/mnt/ssd/indexes/'};
+					//CREATE CUSTOM INDEX taulia_invoice_invoice_business_unit_id_index ON taulia_invoice.invoice (business_unit_id) USING 'com.datastax.bdp.search.solr.Cql3SolrSecondaryIndex';
 					
 					var splits = RegExCreateIndex.Split(cqlStr);
 					Tuple<string,string> indexKSTbl = null;
@@ -3200,12 +3220,18 @@ void ReadCQLDDLParseIntoDataTable(IFilePath cqlDDLFilePath,
 					dataRow["DDL"] = cqlStr;
 					dataRow["Assocated Table"] = ksTbl.Item1 + "." + ksTbl.Item2;
 					
+					var lookforUsingClause = RegExCreateIndexUsing.Split(cqlStr);
+
+					if (lookforUsingClause.Length > 1)
+					{
+						dataRow["Compaction Strategy"] = RemoveNamespace(lookforUsingClause[1]);
+					}
+
+
 					var assocTblRow = dtTable.Rows.Find(new object[] { ksTbl.Item1, ksTbl.Item2 });
 
 					if (assocTblRow != null)
 					{
-						dataRow["Compaction Strategy"] = assocTblRow["Compaction Strategy"];
-						
 						var cqlDDL = assocTblRow["DDL"] as string;
 
 						if (!string.IsNullOrEmpty(cqlDDL))
@@ -3228,6 +3254,14 @@ void ReadCQLDDLParseIntoDataTable(IFilePath cqlDDLFilePath,
 					dtTable.Rows.Add(dataRow);
 					#endregion
 				}
+				else
+				{
+					cqlStr.Dump(string.Format("Warning: Unrecognized CQL found in file \"{0}\"", cqlDDLFilePath.PathResolved));
+				}
+			}
+			else
+			{
+				cqlStr.Dump(string.Format("Warning: Unrecognized CQL found in file \"{0}\"", cqlDDLFilePath.PathResolved));
 			}
 		}
 	}
