@@ -34,12 +34,13 @@
 const int MaxRowInExcelWorkSheet = 500000; //-1 disabled
 const int MaxRowInExcelWorkBook = 1000000; //-1 disabled
 const int GCPausedFlagThresholdInMS = 5000; //Defines a threshold that will flag a log entry in both the log summary (only if GCInspector.java) and log worksheets
-const int CompactionFlagThresholdInMS = 5000; //Defines a threshold that will flag a log entry in both the log summary (only if CompactionTask.java) and log worksheets
+const int CompactionFlagThresholdInMS = 10000; //Defines a threshold that will flag a log entry in both the log summary (only if CompactionTask.java) and log worksheets
+const int SlowLogQueryThresholdInMS = 2000;
 static TimeSpan LogTimeSpanRange = new TimeSpan(2, 0, 0, 0); //Only import log entries for the past timespan (e.g., the last 5 days) based on LogCurrentDate.
 static DateTime LogCurrentDate = DateTime.MinValue; //DateTime.Now.Date; //If DateTime.MinValue all log entries are parsed
 static int LogMaxRowsPerNode = -1; // -1 disabled
 static string[] LogSummaryIndicatorType = new string[] { "WARN", "ERROR" };
-static string[] LogSummaryTaskItems = new string[] { "SliceQueryFilter.java", "BatchStatement.java", "CompactionController.java", "HintedHandoffMetrics.java", "GCInspector.java", "MessagingService.java", "CompactionTask.java", "RepairSession.java", "SSTableWriter.java"};
+static string[] LogSummaryTaskItems = new string[] { "SliceQueryFilter.java", "BatchStatement.java", "CompactionController.java", "HintedHandoffMetrics.java", "GCInspector.java", "MessagingService.java", "CompactionTask.java", "RepairSession.java", "SSTableWriter.java", "CqlSlowLogWriter.java"};
 static string[] LogSummaryIgnoreTaskExceptions = new string[] { };
 static Tuple<DateTime, TimeSpan>[] LogSummaryPeriods = null; //new Tuple<DateTime, TimeSpan>[] { new Tuple<DateTime,TimeSpan>(new DateTime(2016, 08, 02), new TimeSpan(0, 0, 30, 0)), //From By date/time and aggregation period
 																						 //new Tuple<DateTime,TimeSpan>(new DateTime(2016, 08, 1, 0, 0, 0), new TimeSpan(0, 1, 0, 0)),
@@ -71,8 +72,8 @@ void Main()
 	var excelTrmplateFilePath = @"[MyDocuments]\LINQPad Queries\DataStax\dseTemplate.xlsx"; 
 	
 	//Location where this application will write or update the Excel file.
-	//var excelFilePath = @"[DeskTop]\Test.xlsx"; //<==== Should be updated
-	var excelFilePath = @"[DeskTop]\Tsulis.xlsx";
+	var excelFilePath = @"[DeskTop]\Test.xlsx"; //<==== Should be updated
+	//var excelFilePath = @"[DeskTop]\CapOne.xlsx";
 	
 	//If diagnosticNoSubFolders is false:
 	//Directory where files are located to parse DSE diagnostics files produced by DataStax OpsCenter diagnostics or a special directory structure where DSE diagnostics information is placed.
@@ -95,13 +96,15 @@ void Main()
 	//		e.g., cfstats_10.192.40.7, system-10.192.40.7.log, 10.192.40.7_system.log, etc.
 	//var diagnosticPath = @"[MyDocuments]\LINQPad Queries\DataStax\TestData\gamingactivity-diagnostics-2016_08_10_08_45_40_UTC";
 	//var diagnosticPath = @"[MyDocuments]\LINQPad Queries\DataStax\TestData\production_group_v_1-diagnostics-2016_07_04_15_43_48_UTC"; 
-	var diagnosticPath = @"[MyDocuments]\LINQPad Queries\DataStax\TestData\na1_v_prd_green-diagnostics-2016_08_30_19_08_03_UTC";
+	//var diagnosticPath = @"[MyDocuments]\LINQPad Queries\DataStax\TestData\na1_v_prd_green-diagnostics-2016_08_30_19_08_03_UTC";
+	//var diagnosticPath = @"[MyDocuments]\LINQPad Queries\DataStax\TestData\cengage";
+	var diagnosticPath = @"[MyDocuments]\LINQPad Queries\DataStax\TestData\CapOne";
 	//@"C:\Users\richard\Desktop\datastax"; 
 	var diagnosticNoSubFolders = false; //<==== Should be Updated 
 	var parseLogs = true;
 	var parseNonLogs = true;
 	
-	//Excel Workbook names
+	//Excel Worksheet names
 	var excelWorkSheetRingInfo = "Node Information";
 	var excelWorkSheetRingTokenRanges = "Ring Token Ranges";
 	var excelWorkSheetCFStats = "CFStats";
@@ -973,35 +976,36 @@ void Main()
 												workSheet.Cells["1:2"].Style.HorizontalAlignment = OfficeOpenXml.Style.ExcelHorizontalAlignment.Center;
 												//workBook.Cells["1:1"].Style.Fill.BackgroundColor.SetColor(System.Drawing.Color.LightGray);
 
-												workSheet.Cells["F1:H1"].Style.WrapText = true;
-												workSheet.Cells["F1:H1"].Merge = true;
-												workSheet.Cells["F1:H1"].Value = "Read-Repair";
-												workSheet.Cells["F1:F2"].Style.Border.Left.Style = OfficeOpenXml.Style.ExcelBorderStyle.Medium;
-												workSheet.Cells["H1:H2"].Style.Border.Right.Style = OfficeOpenXml.Style.ExcelBorderStyle.Medium;
+												workSheet.Cells["G1:I1"].Style.WrapText = true;
+												workSheet.Cells["G1:I1"].Merge = true;
+												workSheet.Cells["G1:I1"].Value = "Read-Repair";
+												workSheet.Cells["G1:G2"].Style.Border.Left.Style = OfficeOpenXml.Style.ExcelBorderStyle.Medium;
+												workSheet.Cells["I1:I2"].Style.Border.Right.Style = OfficeOpenXml.Style.ExcelBorderStyle.Medium;
 
-												workSheet.Cells["J1:M1"].Style.WrapText = true;
-												workSheet.Cells["J1:M1"].Merge = true;
-												workSheet.Cells["J1:M1"].Value = "Column Counts";
-												workSheet.Cells["J1:J2"].Style.Border.Left.Style = OfficeOpenXml.Style.ExcelBorderStyle.Medium;
-												workSheet.Cells["M1:M2"].Style.Border.Right.Style = OfficeOpenXml.Style.ExcelBorderStyle.Medium;
+												workSheet.Cells["K1:N1"].Style.WrapText = true;
+												workSheet.Cells["K1:N1"].Merge = true;
+												workSheet.Cells["K1:N1"].Value = "Column Counts";
+												workSheet.Cells["K1:K2"].Style.Border.Left.Style = OfficeOpenXml.Style.ExcelBorderStyle.Medium;
+												workSheet.Cells["N1:N2"].Style.Border.Right.Style = OfficeOpenXml.Style.ExcelBorderStyle.Medium;
 
 												workSheet.View.FreezePanes(3, 1);
-												workSheet.Cells["F:F"].Style.Numberformat.Format = "0%";
 												workSheet.Cells["G:G"].Style.Numberformat.Format = "0%";
-												workSheet.Cells["I:I"].Style.Numberformat.Format = "d hh:mm";
-												workSheet.Cells["J:J"].Style.Numberformat.Format = "###";
+												workSheet.Cells["H:H"].Style.Numberformat.Format = "0%";
+												workSheet.Cells["J:J"].Style.Numberformat.Format = "d hh:mm";
 												workSheet.Cells["K:K"].Style.Numberformat.Format = "###";
 												workSheet.Cells["L:L"].Style.Numberformat.Format = "###";
 												workSheet.Cells["M:M"].Style.Numberformat.Format = "###";
-												workSheet.Cells["A2:M2"].AutoFilter = true;
+												workSheet.Cells["N:N"].Style.Numberformat.Format = "###";
+																																				
+												workSheet.Cells["A2:O2"].AutoFilter = true;
 
-												workSheet.Cells["H2"].AddComment("speculative_retry -- To override normal read timeout when read_repair_chance is not 1.0, sending another request to read, choose one of these values and use the property to create or alter the table: \"ALWAYS\" -- Retry reads of all replicas, \"Xpercentile\" -- Retry reads based on the effect on throughput and latency, \"Yms\" -- Retry reads after specified milliseconds, \"NONE\" -- Do not retry reads. Using the speculative retry property, you can configure rapid read protection in Cassandra 2.0.2 and later.Use this property to retry a request after some milliseconds have passed or after a percentile of the typical read latency has been reached, which is tracked per table.", "Richard Andersen");
-												workSheet.Cells["G2"].AddComment("dclocal_read_repair_chance -- Specifies the probability of read repairs being invoked over all replicas in the current data center. Defaults are: 0.1 (Cassandra 2.1, Cassandra 2.0.9 and later) 0.0 (Cassandra 2.0.8 and earlier)", "Richard Andersen");
-												workSheet.Cells["F2"].AddComment("read_repair_chance -- Specifies the basis for invoking read repairs on reads in clusters. The value must be between 0 and 1. Default Values are: 0.0 (Cassandra 2.1, Cassandra 2.0.9 and later) 0.1 (Cassandra 2.0.8 and earlier)", "Richard Andersen");
-												workSheet.Cells["I2"].AddComment("gc_grace_seconds -- Specifies the time to wait before garbage collecting tombstones (deletion markers). The default value allows a great deal of time for consistency to be achieved prior to deletion. In many deployments this interval can be reduced, and in a single-node cluster it can be safely set to zero. Default value is 864000 [10 days]", "Richard Andersen");
+												workSheet.Cells["I2"].AddComment("speculative_retry -- To override normal read timeout when read_repair_chance is not 1.0, sending another request to read, choose one of these values and use the property to create or alter the table: \"ALWAYS\" -- Retry reads of all replicas, \"Xpercentile\" -- Retry reads based on the effect on throughput and latency, \"Yms\" -- Retry reads after specified milliseconds, \"NONE\" -- Do not retry reads. Using the speculative retry property, you can configure rapid read protection in Cassandra 2.0.2 and later.Use this property to retry a request after some milliseconds have passed or after a percentile of the typical read latency has been reached, which is tracked per table.", "Richard Andersen");
+												workSheet.Cells["H2"].AddComment("dclocal_read_repair_chance -- Specifies the probability of read repairs being invoked over all replicas in the current data center. Defaults are: 0.1 (Cassandra 2.1, Cassandra 2.0.9 and later) 0.0 (Cassandra 2.0.8 and earlier)", "Richard Andersen");
+												workSheet.Cells["G2"].AddComment("read_repair_chance -- Specifies the basis for invoking read repairs on reads in clusters. The value must be between 0 and 1. Default Values are: 0.0 (Cassandra 2.1, Cassandra 2.0.9 and later) 0.1 (Cassandra 2.0.8 and earlier)", "Richard Andersen");
+												workSheet.Cells["J2"].AddComment("gc_grace_seconds -- Specifies the time to wait before garbage collecting tombstones (deletion markers). The default value allows a great deal of time for consistency to be achieved prior to deletion. In many deployments this interval can be reduced, and in a single-node cluster it can be safely set to zero. Default value is 864000 [10 days]", "Richard Andersen");
 
 
-												workSheet.Cells["A:L"].AutoFitColumns();
+												workSheet.Cells["A:O"].AutoFitColumns();
 											},
 											null,
 											"A2");
@@ -1230,10 +1234,10 @@ void Main()
 											workSheet.Cells["1:1"].Style.Fill.PatternType = OfficeOpenXml.Style.ExcelFillStyle.LightGray;
 											workSheet.Cells["1:1"].Style.HorizontalAlignment = OfficeOpenXml.Style.ExcelHorizontalAlignment.Center;
 											//workBook.Cells["1:1"].Style.Fill.BackgroundColor.SetColor(System.Drawing.Color.LightGray);
-											workSheet.Cells["E:K"].Style.Numberformat.Format = "#,###,###,##0";
+											workSheet.Cells["E:L"].Style.Numberformat.Format = "#,###,###,##0";
 
 											workSheet.View.FreezePanes(2, 1);
-											workSheet.Cells["A1:K1"].AutoFilter = true;
+											workSheet.Cells["A1:L1"].AutoFilter = true;
 											workSheet.Cells.AutoFitColumns();
 										},
 										false,
@@ -2037,6 +2041,7 @@ void initializeTPStatsDataTable(DataTable dtTPStats)
 		dtTPStats.Columns.Add("All time blocked", typeof(long)).AllowDBNull = true;
 		dtTPStats.Columns.Add("Dropped", typeof(long)).AllowDBNull = true;
 		dtTPStats.Columns.Add("Latency (ms)", typeof(int)).AllowDBNull = true;
+		dtTPStats.Columns.Add("Occurrences", typeof(int)).AllowDBNull = true;
 	}
 }
 
@@ -2104,6 +2109,7 @@ void ReadTPStatsFileParseIntoDataTable(IFilePath tpstatsFilePath,
 }
 
 static Common.DateTimeRange LogCassandraMaxMinTimestamp = new Common.DateTimeRange();
+static Common.Patterns.Collections.ThreadSafe.Dictionary<string,List<Common.DateTimeRange>> LogCassandraNodeMaxMinTimestamps = new Common.Patterns.Collections.ThreadSafe.Dictionary<string,List<Common.DateTimeRange>>();
 
 void ReadCassandraLogParseIntoDataTable(IFilePath clogFilePath,
 										string ipAddress,
@@ -2113,7 +2119,8 @@ void ReadCassandraLogParseIntoDataTable(IFilePath clogFilePath,
 										System.Data.DataTable dtCLog,
 										out DateTime maxTimestamp,
 										int gcPausedFlagThresholdInMS = GCPausedFlagThresholdInMS,
-										int compactionFllagThresholdInMS = CompactionFlagThresholdInMS)
+										int compactionFllagThresholdInMS = CompactionFlagThresholdInMS,
+										int slowLogQueryThresholdInMS = SlowLogQueryThresholdInMS)
 {
 	if (dtCLog.Columns.Count == 0)
 	{
@@ -2320,6 +2327,23 @@ void ReadCassandraLogParseIntoDataTable(IFilePath clogFilePath,
 			line.Dump(string.Format("Warning: Invalid Log Date/Time File: {0}", clogFilePath.PathResolved));
 			continue;
 		}
+
+		List<Common.DateTimeRange> nodeRangers;
+		if (LogCassandraNodeMaxMinTimestamps.TryGetValue(ipAddress, out nodeRangers))
+		{
+			lock (nodeRangers)
+			{
+				if (nodeRangers.Any(r => r.IsBetween(lineDateTime)))
+				{
+					Console.WriteLine(string.Format("Warning: Log Date \"{1}\" falls between already processed timestamp ranges of \"{2}\". Processing of this log file is aborted. Log File is \"{0}\"",
+														clogFilePath.PathResolved,
+														lineDateTime,
+														string.Join(", ", nodeRangers)));
+					break;
+				}
+			}
+		}
+		
 		#endregion
 
 		#region Basic column Info
@@ -2775,6 +2799,27 @@ void ReadCassandraLogParseIntoDataTable(IFilePath clogFilePath,
 				{
 					dataRow["Assocated Value"] = parsedValues[nCell];
 				}
+			}					
+			else if (parsedValues[4] == "CqlSlowLogWriter.java")
+			{
+				//INFO  [CqlSlowLog-Writer-thread-0] 2016-08-16 01:42:34,277  CqlSlowLogWriter.java:151 - Recording statements with duration of 60248 in slow log
+				if (nCell == itemValuePos)
+				{
+					var queryTime = int.Parse(parsedValues[nCell]);
+
+					if (queryTime >= slowLogQueryThresholdInMS)
+					{
+						dataRow["Flagged"] = true;
+						//dataRow["Assocated Item"] = "Compaction Pause";
+						dataRow["Exception"] = "Slow Query";
+					}
+					dataRow["Assocated Value"] = queryTime;
+				}
+				else if (parsedValues[nCell] == "Recording")
+				{
+					itemValuePos = nCell + 5;
+					dataRow["Assocated Item"] = "Slow Query Writing to dse_perf.node_slow_log table";
+				}
 			}
 			else if (LookForIPAddress(parsedValues[nCell], ipAddress, out lineIPAddress))
 			{
@@ -2798,10 +2843,17 @@ void ReadCassandraLogParseIntoDataTable(IFilePath clogFilePath,
 
 	maxTimestamp = minmaxDate.Max;
 
-	lock(LogCassandraMaxMinTimestamp)
-    {
-		LogCassandraMaxMinTimestamp.SetMinMax(minmaxDate.Min);
-		LogCassandraMaxMinTimestamp.SetMinMax(minmaxDate.Max);		
+	if (!minmaxDate.IsEmpty())
+	{		
+		lock (LogCassandraMaxMinTimestamp)
+		{
+			LogCassandraMaxMinTimestamp.SetMinMax(minmaxDate.Min);
+			LogCassandraMaxMinTimestamp.SetMinMax(minmaxDate.Max);
+		}
+
+		LogCassandraNodeMaxMinTimestamps.AddOrUpdate(ipAddress,
+														strAddress => new List<Common.DateTimeRange>() { new Common.DateTimeRange(minmaxDate.Max, minmaxDate.Min) },
+														(strAddress, dtRanges) => { dtRanges.Add(minmaxDate); return dtRanges; });
 	}
 }
 
@@ -2812,7 +2864,7 @@ static Regex RegExCreateIndexUsing = new Regex(@".+using\s*((?:'|""|`)?.+?(?:'|"
 										RegexOptions.IgnoreCase | RegexOptions.Compiled);
 										
 void ReadCQLDDLParseIntoDataTable(IFilePath cqlDDLFilePath,
-									string IPAddress,
+									string ipAddress,
 									string dcName,
 									System.Data.DataTable dtKeySpace,
 									System.Data.DataTable dtTable,
@@ -2839,6 +2891,7 @@ void ReadCQLDDLParseIntoDataTable(IFilePath cqlDDLFilePath,
 		dtTable.Columns.Add("Pritition Key", typeof(string));
 		dtTable.Columns.Add("Cluster Key", typeof(string)).AllowDBNull = true;
 		dtTable.Columns.Add("Compaction Strategy", typeof(string)).AllowDBNull = true;
+		dtTable.Columns.Add("Index", typeof(bool)).AllowDBNull = true;
 		dtTable.Columns.Add("Chance", typeof(decimal)).AllowDBNull = true;//f
 		dtTable.Columns.Add("DC Chance", typeof(decimal)).AllowDBNull = true;//g
 		dtTable.Columns.Add("Policy", typeof(string)).AllowDBNull = true;//h
@@ -2855,418 +2908,440 @@ void ReadCQLDDLParseIntoDataTable(IFilePath cqlDDLFilePath,
  
 
 	var fileLines = cqlDDLFilePath.ReadAllLines();
-	string line;
+	string line = null;
 	var strCQL = new StringBuilder();
 	List<string> parsedValues;
 	List<string> parsedComponent;
 	string currentKeySpace = null;
 	DataRow dataRow;
-	
-	for (int nLine = 0; nLine < fileLines.Length; ++nLine)
+
+	try
 	{
-		line = fileLines[nLine].Trim();
-		
-		if (string.IsNullOrEmpty(line)
-				|| line.Substring(0, 2) == "//"
-				|| line.Substring(0, 2) == "--")
+		for (int nLine = 0; nLine < fileLines.Length; ++nLine)
 		{
-			continue;
-		}
-		else if (line.Substring(0, 2) == "/*")
-		{
-			for (; nLine < fileLines.Length || line.EndsWith("*/"); ++nLine)
-			{
-				line = fileLines[nLine].Trim();
-			}
-		}
-		
-		strCQL.Append(" ");
-		strCQL.Append(line);
+			line = fileLines[nLine].Trim();
 
-		if (line[line.Length - 1] == ';')
-		{
-			string cqlStr = strCQL.ToString().TrimStart();
-			strCQL.Clear();
-
-			if (cqlStr.ToLower().StartsWith("use "))
+			if (string.IsNullOrEmpty(line)
+					|| line.Substring(0, 2) == "//"
+					|| line.Substring(0, 2) == "--")
 			{
-				parsedValues = Common.StringFunctions.Split(cqlStr,
-																new char[] { ' ', ';' },
-																Common.StringFunctions.IgnoreWithinDelimiterFlag.AngleBracket
-																	| Common.StringFunctions.IgnoreWithinDelimiterFlag.Text
-																	| Common.StringFunctions.IgnoreWithinDelimiterFlag.Bracket,
-																Common.StringFunctions.SplitBehaviorOptions.Default
-																	| Common.StringFunctions.SplitBehaviorOptions.RemoveEmptyEntries);
-																	
-				currentKeySpace = RemoveQuotes(parsedValues.Last());
 				continue;
 			}
-
-			parsedValues = Common.StringFunctions.Split(cqlStr,
-														new char[] { ',', '{', '}'},
-														Common.StringFunctions.IgnoreWithinDelimiterFlag.AngleBracket
-															| Common.StringFunctions.IgnoreWithinDelimiterFlag.Text
-															| Common.StringFunctions.IgnoreWithinDelimiterFlag.Bracket
-															| Common.StringFunctions.IgnoreWithinDelimiterFlag.Parenthese,
-														Common.StringFunctions.SplitBehaviorOptions.Default
-															| Common.StringFunctions.SplitBehaviorOptions.RemoveEmptyEntries);
-
-			if (parsedValues[0].StartsWith("create", StringComparison.OrdinalIgnoreCase))
+			else if (line.Substring(0, 2) == "/*")
 			{
-				
-				if (parsedValues[0].Substring(6,9).TrimStart().ToLower() == "keyspace")
+				for (; nLine < fileLines.Length || line.EndsWith("*/"); ++nLine)
 				{
-					#region keyspace
-					parsedComponent = Common.StringFunctions.Split(parsedValues[0],
-																	' ',
-																	Common.StringFunctions.IgnoreWithinDelimiterFlag.All,
+					line = fileLines[nLine].Trim();
+				}
+			}
+
+			strCQL.Append(" ");
+			strCQL.Append(line);
+
+			if (line[line.Length - 1] == ';')
+			{
+				string cqlStr = strCQL.ToString().TrimStart();
+				strCQL.Clear();
+
+				if (cqlStr.ToLower().StartsWith("use "))
+				{
+					parsedValues = Common.StringFunctions.Split(cqlStr,
+																	new char[] { ' ', ';' },
+																	Common.StringFunctions.IgnoreWithinDelimiterFlag.AngleBracket
+																		| Common.StringFunctions.IgnoreWithinDelimiterFlag.Text
+																		| Common.StringFunctions.IgnoreWithinDelimiterFlag.Bracket,
 																	Common.StringFunctions.SplitBehaviorOptions.Default
 																		| Common.StringFunctions.SplitBehaviorOptions.RemoveEmptyEntries);
-																		
-					//CREATE KEYSPACE billing WITH replication =
-					//'class': 'NetworkTopologyStrategy'
-					//'us-west-2': '3'
-					//;
 
-					var ksName = RemoveQuotes(parsedComponent[parsedComponent.Count() - 4]);
+					currentKeySpace = RemoveQuotes(parsedValues.Last());
+					continue;
+				}
 
-					if (ignoreKeySpaces.Contains(ksName))
+				parsedValues = Common.StringFunctions.Split(cqlStr,
+															new char[] { ',', '{', '}' },
+															Common.StringFunctions.IgnoreWithinDelimiterFlag.AngleBracket
+																| Common.StringFunctions.IgnoreWithinDelimiterFlag.Text
+																| Common.StringFunctions.IgnoreWithinDelimiterFlag.Bracket
+																| Common.StringFunctions.IgnoreWithinDelimiterFlag.Parenthese,
+															Common.StringFunctions.SplitBehaviorOptions.Default
+																| Common.StringFunctions.SplitBehaviorOptions.RemoveEmptyEntries);
+
+				if (parsedValues[0].StartsWith("create", StringComparison.OrdinalIgnoreCase))
+				{
+
+					if (parsedValues[0].Substring(6, 9).TrimStart().ToLower() == "keyspace")
 					{
-						continue;
-					}
-					
-					parsedComponent = Common.StringFunctions.Split(parsedValues[1],
-																	':',
-																	Common.StringFunctions.IgnoreWithinDelimiterFlag.All,
-																	Common.StringFunctions.SplitBehaviorOptions.Default
-																		| Common.StringFunctions.SplitBehaviorOptions.RemoveEmptyEntries);
-					
-					var ksStratery = RemoveNamespace(parsedComponent.Last().Trim());
+						#region keyspace
+						parsedComponent = Common.StringFunctions.Split(parsedValues[0],
+																		' ',
+																		Common.StringFunctions.IgnoreWithinDelimiterFlag.All,
+																		Common.StringFunctions.SplitBehaviorOptions.Default
+																			| Common.StringFunctions.SplitBehaviorOptions.RemoveEmptyEntries);
 
-					for (int nIndex = 2; nIndex < parsedValues.Count - 1; ++nIndex)
-					{
-						dataRow = dtKeySpace.NewRow();
-						dataRow["Name"] = ksName;
-						dataRow["Replication Strategy"] = ksStratery;
+						//CREATE KEYSPACE billing WITH replication =
+						//'class': 'NetworkTopologyStrategy'
+						//'us-west-2': '3'
+						//;
 
-						parsedComponent = Common.StringFunctions.Split(parsedValues[nIndex],
+						var ksName = RemoveQuotes(parsedComponent[parsedComponent.Count() - 4]);
+
+						if (ignoreKeySpaces.Contains(ksName))
+						{
+							continue;
+						}
+
+						parsedComponent = Common.StringFunctions.Split(parsedValues[1],
 																		':',
 																		Common.StringFunctions.IgnoreWithinDelimiterFlag.All,
 																		Common.StringFunctions.SplitBehaviorOptions.Default
 																			| Common.StringFunctions.SplitBehaviorOptions.RemoveEmptyEntries);
 
-						dataRow["Data Center"] = RemoveQuotes(parsedComponent[0]);
-						dataRow["Replication Factor"] = int.Parse(RemoveQuotes(parsedComponent[1]));
+						var ksStratery = RemoveNamespace(parsedComponent.Last().Trim());
+
+						for (int nIndex = 2; nIndex < parsedValues.Count - 1; ++nIndex)
+						{
+							dataRow = dtKeySpace.NewRow();
+							dataRow["Name"] = ksName;
+							dataRow["Replication Strategy"] = ksStratery;
+
+							parsedComponent = Common.StringFunctions.Split(parsedValues[nIndex],
+																			':',
+																			Common.StringFunctions.IgnoreWithinDelimiterFlag.All,
+																			Common.StringFunctions.SplitBehaviorOptions.Default
+																				| Common.StringFunctions.SplitBehaviorOptions.RemoveEmptyEntries);
+
+							dataRow["Data Center"] = RemoveQuotes(parsedComponent[0]);
+							dataRow["Replication Factor"] = int.Parse(RemoveQuotes(parsedComponent[1]));
+							dataRow["DDL"] = cqlStr;
+
+							dtKeySpace.Rows.Add(dataRow);
+						}
+						#endregion
+					}
+					else if (parsedValues[0].Substring(6, 6).TrimStart().ToLower() == "table")
+					{
+						#region table
+						//CREATE TABLE account_payables(date int, org_key text, product_type text, product_id bigint, product_update_id bigint, vendor_type text, parent_product_id bigint, parent_product_type text, parent_product_update_id bigint, user_id bigint, vendor_detail text, PRIMARY KEY((date, org_key), product_type, product_id, product_update_id, vendor_type)) WITH bloom_filter_fp_chance = 0.100000 AND caching = 'KEYS_ONLY' AND comment = '' AND dclocal_read_repair_chance = 0.100000 AND gc_grace_seconds = 864000 AND index_interval = 128 AND read_repair_chance = 0.000000 AND replicate_on_write = 'true' AND populate_io_cache_on_flush = 'false' AND default_time_to_live = 0 AND speculative_retry = '99.0PERCENTILE' AND memtable_flush_period_in_ms = 0 AND compaction =
+						//		'class': 'LeveledCompactionStrategy'
+						//AND compression =
+						//'sstable_compression': 'LZ4Compressor'
+						//;					
+						var startParan = cqlStr.IndexOf('(');
+						var endParan = cqlStr.LastIndexOf(')');
+						var strFrtTbl = cqlStr.Substring(0, startParan);
+						var strColsTbl = cqlStr.Substring(startParan + 1, endParan - startParan - 1);
+						var strOtpsTbl = cqlStr.Substring(endParan + 1);
+
+						//Split to Find Table Name
+						parsedComponent = Common.StringFunctions.Split(strFrtTbl,
+																		' ',
+																		Common.StringFunctions.IgnoreWithinDelimiterFlag.All,
+																		Common.StringFunctions.SplitBehaviorOptions.Default
+																			| Common.StringFunctions.SplitBehaviorOptions.RemoveEmptyEntries);
+
+						var kstblName = SplitTableName(parsedComponent.Last(), currentKeySpace);
+
+						if (ignoreKeySpaces.Contains(kstblName.Item1))
+						{
+							continue;
+						}
+
+						dataRow = dtTable.NewRow();
+						dataRow["Keyspace Name"] = kstblName.Item1;
+						dataRow["Name"] = kstblName.Item2;
 						dataRow["DDL"] = cqlStr;
-						
-						dtKeySpace.Rows.Add(dataRow);
-					}
-					#endregion
-				}
-				else if (parsedValues[0].Substring(6,6).TrimStart().ToLower() == "table")
-				{
-					#region table
-					//CREATE TABLE account_payables(date int, org_key text, product_type text, product_id bigint, product_update_id bigint, vendor_type text, parent_product_id bigint, parent_product_type text, parent_product_update_id bigint, user_id bigint, vendor_detail text, PRIMARY KEY((date, org_key), product_type, product_id, product_update_id, vendor_type)) WITH bloom_filter_fp_chance = 0.100000 AND caching = 'KEYS_ONLY' AND comment = '' AND dclocal_read_repair_chance = 0.100000 AND gc_grace_seconds = 864000 AND index_interval = 128 AND read_repair_chance = 0.000000 AND replicate_on_write = 'true' AND populate_io_cache_on_flush = 'false' AND default_time_to_live = 0 AND speculative_retry = '99.0PERCENTILE' AND memtable_flush_period_in_ms = 0 AND compaction =
-					//		'class': 'LeveledCompactionStrategy'
-					//AND compression =
-					//'sstable_compression': 'LZ4Compressor'
-					//;					
-					var startParan = cqlStr.IndexOf('(');
-					var endParan = cqlStr.LastIndexOf(')');
-					var strFrtTbl = cqlStr.Substring(0,startParan);
-					var strColsTbl = cqlStr.Substring(startParan + 1,endParan - startParan - 1);
-					var strOtpsTbl = cqlStr.Substring(endParan + 1);
-					
-					//Split to Find Table Name
-					parsedComponent = Common.StringFunctions.Split(strFrtTbl,
-																	' ',
-																	Common.StringFunctions.IgnoreWithinDelimiterFlag.All,
-																	Common.StringFunctions.SplitBehaviorOptions.Default
-																		| Common.StringFunctions.SplitBehaviorOptions.RemoveEmptyEntries);
 
-					var kstblName = SplitTableName(parsedComponent.Last(), currentKeySpace);
-
-					if (ignoreKeySpaces.Contains(kstblName.Item1))
-					{
-						continue;
-					}
-
-					dataRow = dtTable.NewRow();
-					dataRow["Keyspace Name"] = kstblName.Item1;
-					dataRow["Name"] = kstblName.Item2;
-					dataRow["DDL"] = cqlStr;
-					
-					//Find Columns
-					var tblColumns = Common.StringFunctions.Split(strColsTbl,
-																	',',
-																	Common.StringFunctions.IgnoreWithinDelimiterFlag.All,
-																	Common.StringFunctions.SplitBehaviorOptions.Default
-																		| Common.StringFunctions.SplitBehaviorOptions.RemoveEmptyEntries);
-
-					
-					if (tblColumns.Last().StartsWith("PRIMARY KEY", StringComparison.OrdinalIgnoreCase))
-					{
-						var pkClause = tblColumns.Last();
-						startParan = pkClause.IndexOf('(');
-						endParan = pkClause.LastIndexOf(')');
-
-						var pckList = Common.StringFunctions.Split(pkClause.Substring(startParan + 1, endParan - startParan - 1),
+						//Find Columns
+						var tblColumns = Common.StringFunctions.Split(strColsTbl,
 																		',',
 																		Common.StringFunctions.IgnoreWithinDelimiterFlag.All,
 																		Common.StringFunctions.SplitBehaviorOptions.Default
-																			| Common.StringFunctions.SplitBehaviorOptions.RemoveEmptyEntries)
-											.Select(sf => sf.Trim());
+																			| Common.StringFunctions.SplitBehaviorOptions.RemoveEmptyEntries);
 
-						var pkLocation = pckList.First();
-						if (pkLocation[0] == '(')
+
+						if (tblColumns.Last().StartsWith("PRIMARY KEY", StringComparison.OrdinalIgnoreCase))
 						{
-							startParan = pkLocation.IndexOf('(');
-							endParan = pkLocation.LastIndexOf(')');
+							var pkClause = tblColumns.Last();
+							startParan = pkClause.IndexOf('(');
+							endParan = pkClause.LastIndexOf(')');
 
-							var pkList = Common.StringFunctions.Split(pkLocation.Substring(startParan + 1, endParan - startParan - 1),
-																				',',
-																				Common.StringFunctions.IgnoreWithinDelimiterFlag.All,
-																				Common.StringFunctions.SplitBehaviorOptions.Default
-																					| Common.StringFunctions.SplitBehaviorOptions.RemoveEmptyEntries)
-											.Select(sf => sf.Trim());
-							var pkdtList = new List<string>();
-							
-							foreach (var element in pkList)
+							var pckList = Common.StringFunctions.Split(pkClause.Substring(startParan + 1, endParan - startParan - 1),
+																			',',
+																			Common.StringFunctions.IgnoreWithinDelimiterFlag.All,
+																			Common.StringFunctions.SplitBehaviorOptions.Default
+																				| Common.StringFunctions.SplitBehaviorOptions.RemoveEmptyEntries)
+												.Select(sf => sf.Trim());
+
+							var pkLocation = pckList.First();
+							if (pkLocation[0] == '(')
 							{
-								pkdtList.Add(tblColumns.Find(c => c.StartsWith(element)));
+								startParan = pkLocation.IndexOf('(');
+								endParan = pkLocation.LastIndexOf(')');
+
+								var pkList = Common.StringFunctions.Split(pkLocation.Substring(startParan + 1, endParan - startParan - 1),
+																					',',
+																					Common.StringFunctions.IgnoreWithinDelimiterFlag.All,
+																					Common.StringFunctions.SplitBehaviorOptions.Default
+																						| Common.StringFunctions.SplitBehaviorOptions.RemoveEmptyEntries)
+												.Select(sf => sf.Trim());
+								var pkdtList = new List<string>();
+
+								foreach (var element in pkList)
+								{
+									pkdtList.Add(tblColumns.Find(c => c.StartsWith(element)));
+								}
+								dataRow["Pritition Key"] = string.Join(", ", pkdtList);
 							}
-							dataRow["Pritition Key"] = string.Join(", ", pkdtList);
+							else
+							{
+								dataRow["Pritition Key"] = tblColumns.Find(c => c.StartsWith(pkLocation));
+							}
+
+							var cdtList = new List<string>();
+
+							for (int nIndex = 1; nIndex < pckList.Count(); ++nIndex)
+							{
+								cdtList.Add(tblColumns.Find(c => c.StartsWith(pckList.ElementAt(nIndex))));
+							}
+							dataRow["Cluster Key"] = string.Join(", ", cdtList);
 						}
 						else
 						{
-							dataRow["Pritition Key"] = tblColumns.Find(c => c.StartsWith(pkLocation));
+							//look for keyworad Primary Key
+							var pkVar = tblColumns.Find(c => c.EndsWith("primary key", StringComparison.OrdinalIgnoreCase));
+
+							dataRow["Pritition Key"] = pkVar.Substring(0, pkVar.Length - 11).TrimEnd();
+							dataRow["Cluster Key"] = null;
 						}
 
-						var cdtList = new List<string>();
+						endParan = tblColumns.Count;
 
-						for (int nIndex = 1; nIndex < pckList.Count(); ++nIndex)
+						if (tblColumns.Last().StartsWith("PRIMARY KEY", StringComparison.OrdinalIgnoreCase)
+								|| tblColumns.Last().StartsWith("WITH ", StringComparison.OrdinalIgnoreCase))
 						{
-							cdtList.Add(tblColumns.Find(c => c.StartsWith(pckList.ElementAt(nIndex))));
+							--endParan;
 						}
-                    	dataRow["Cluster Key"] = string.Join(", ", cdtList);
-					}
-					else
-					{
-						//look for keyworad Primary Key
-						var pkVar = tblColumns.Find(c => c.EndsWith("primary key", StringComparison.OrdinalIgnoreCase));
-						 
-						dataRow["Pritition Key"] = pkVar.Substring(0, pkVar.Length - 11).TrimEnd();	
-						dataRow["Cluster Key"] = null;
-					}
-					
-					endParan = tblColumns.Count;
 
-					if (tblColumns.Last().StartsWith("PRIMARY KEY", StringComparison.OrdinalIgnoreCase)
-							|| tblColumns.Last().StartsWith("WITH ", StringComparison.OrdinalIgnoreCase))
-					{
-						--endParan;
-					}
+						int nbrCollections = 0;
+						int nbrCounters = 0;
+						int nbrBlobs = 0;
 
-					int nbrCollections = 0;
-					int nbrCounters = 0;
-					int nbrBlobs = 0;
-					
-					for (int nIndex = 0; nIndex < endParan; ++nIndex)
-					{
-						if (tblColumns[nIndex].EndsWith("primary key", StringComparison.OrdinalIgnoreCase))
+						for (int nIndex = 0; nIndex < endParan; ++nIndex)
 						{
-							tblColumns[nIndex] = tblColumns[nIndex].Substring(0, tblColumns[nIndex].Length - 11).TrimEnd();
+							if (tblColumns[nIndex].EndsWith("primary key", StringComparison.OrdinalIgnoreCase))
+							{
+								tblColumns[nIndex] = tblColumns[nIndex].Substring(0, tblColumns[nIndex].Length - 11).TrimEnd();
+							}
+
+							if (tblColumns[nIndex].EndsWith(" counter", StringComparison.OrdinalIgnoreCase))
+							{
+								++nbrCounters;
+							}
+							else
+							if (tblColumns[nIndex].EndsWith(" blob", StringComparison.OrdinalIgnoreCase))
+							{
+								++nbrBlobs;
+							}
+							else if (tblColumns[nIndex].EndsWith(" list", StringComparison.OrdinalIgnoreCase)
+										|| tblColumns[nIndex].EndsWith(" map", StringComparison.OrdinalIgnoreCase)
+										|| tblColumns[nIndex].EndsWith(" set", StringComparison.OrdinalIgnoreCase))
+							{
+								++nbrCollections;
+							}
 						}
-						
-						if (tblColumns[nIndex].EndsWith(" counter", StringComparison.OrdinalIgnoreCase))
+
+						dataRow["Collections"] = nbrCollections;
+						dataRow["Counters"] = nbrCounters;
+						dataRow["Blobs"] = nbrCounters;
+						dataRow["Total"] = endParan;
+
+						//parse options...
+						parsedComponent = Common.StringFunctions.Split(strOtpsTbl.Substring(5).TrimStart(),
+																		" and ",
+																		StringComparison.OrdinalIgnoreCase,
+																		Common.StringFunctions.IgnoreWithinDelimiterFlag.All,
+																		Common.StringFunctions.SplitBehaviorOptions.Default
+																			| Common.StringFunctions.SplitBehaviorOptions.RemoveEmptyEntries);
+						string optKeyword;
+
+						for (int nIndex = 0; nIndex < parsedComponent.Count; ++nIndex)
 						{
-							++nbrCounters;
+							optKeyword = parsedComponent[nIndex].Trim();
+
+							if (optKeyword[optKeyword.Length - 1] == ';')
+							{
+								optKeyword = optKeyword.Substring(0, optKeyword.Length - 1);
+							}
+
+							if (optKeyword.StartsWith("compaction", StringComparison.OrdinalIgnoreCase))
+							{
+								var kwOptions = ParseKeyValuePair(optKeyword).Item2;
+								var classPos = kwOptions.IndexOf("class");
+								var classSplit = kwOptions.Substring(classPos).Split(new char[] { ':', ',', '}' });
+								var strategy = classSplit[1].Trim();
+								dataRow["Compaction Strategy"] = RemoveNamespace(strategy);
+							}
+							else if (optKeyword.StartsWith("dclocal_read_repair_chance", StringComparison.OrdinalIgnoreCase))
+							{
+								var assignmentSignPos = optKeyword.IndexOf('=');
+
+								if (assignmentSignPos > 0)
+								{
+									var numValue = optKeyword.Substring(assignmentSignPos + 1);
+									decimal numObj;
+
+									if (decimal.TryParse(numValue, out numObj))
+									{
+										dataRow["DC Chance"] = numObj;
+									}
+								}
+							}
+							else if (optKeyword.StartsWith("gc_grace_seconds", StringComparison.OrdinalIgnoreCase))
+							{
+								var assignmentSignPos = optKeyword.IndexOf('=');
+
+								if (assignmentSignPos > 0)
+								{
+									var numValue = optKeyword.Substring(assignmentSignPos + 1);
+
+									dataRow["GC Grace Period"] = new TimeSpan(0, 0, 0, int.Parse(numValue));
+								}
+							}
+							else if (optKeyword.StartsWith("read_repair_chance", StringComparison.OrdinalIgnoreCase))
+							{
+								var assignmentSignPos = optKeyword.IndexOf('=');
+
+								if (assignmentSignPos > 0)
+								{
+									var numValue = optKeyword.Substring(assignmentSignPos + 1);
+									decimal numObj;
+
+									if (decimal.TryParse(numValue, out numObj))
+									{
+										dataRow["Chance"] = numObj;
+									}
+								}
+							}
+							else if (optKeyword.StartsWith("speculative_retry", StringComparison.OrdinalIgnoreCase))
+							{
+								var assignmentSignPos = optKeyword.IndexOf('=');
+
+								if (assignmentSignPos > 0)
+								{
+									dataRow["Policy"] = RemoveQuotes(optKeyword.Substring(assignmentSignPos + 1).Trim());
+								}
+							}
+
+						}
+
+						dtTable.Rows.Add(dataRow);
+						#endregion
+					}//end of table
+					else if (parsedValues[0].Substring(6, 6).TrimStart().ToLower() == "index" || parsedValues[0].Substring(6, 7).TrimStart().ToLower() == "custom")
+					{
+						#region index
+						//CREATE INDEX ix_configuration_effective_from ON production_mqh_config.configuration (effective_from);
+						//CREATE INDEX ON users (phones);
+						//CREATE INDEX todo_dates ON users (KEYS(todo));
+						//CREATE CUSTOM INDEX ON users (email) USING 'path.to.the.IndexClass' WITH OPTIONS = {'storage': '/mnt/ssd/indexes/'};
+						//CREATE CUSTOM INDEX taulia_invoice_invoice_business_unit_id_index ON taulia_invoice.invoice (business_unit_id) USING 'com.datastax.bdp.search.solr.Cql3SolrSecondaryIndex';
+
+						var splits = RegExCreateIndex.Split(cqlStr);
+						Tuple<string, string> indexKSTbl = null;
+						Tuple<string, string> ksTbl;
+						string indexCol = null;
+
+						if (splits.Length == 4)
+						{
+							ksTbl = SplitTableName(splits[1], currentKeySpace);
+							indexCol = splits[2];
+							indexKSTbl = new Tuple<string, string>(ksTbl.Item1, ksTbl.Item2 + "." + "ix_" + indexCol);
 						}
 						else
-						if (tblColumns[nIndex].EndsWith(" blob", StringComparison.OrdinalIgnoreCase))
 						{
-							++nbrBlobs;
+							ksTbl = SplitTableName(splits[2], currentKeySpace);
+							indexKSTbl = SplitTableName(splits[1], currentKeySpace == null ? ksTbl.Item1 : currentKeySpace);
+							indexCol = splits[3];
 						}
-						else if (tblColumns[nIndex].EndsWith(" list", StringComparison.OrdinalIgnoreCase)
-									|| tblColumns[nIndex].EndsWith(" map", StringComparison.OrdinalIgnoreCase)
-									|| tblColumns[nIndex].EndsWith(" set", StringComparison.OrdinalIgnoreCase))
-						{
-							++nbrCollections;
-						}
-					}
-					
-					dataRow["Collections"] = nbrCollections;
-					dataRow["Counters"] = nbrCounters;
-					dataRow["Blobs"] = nbrCounters;
-					dataRow["Total"] = endParan;
-					
-					//parse options...
-					parsedComponent = Common.StringFunctions.Split(strOtpsTbl.Substring(5).TrimStart(),
-																	" and ",
-																	StringComparison.OrdinalIgnoreCase,
-																	Common.StringFunctions.IgnoreWithinDelimiterFlag.All,
-																	Common.StringFunctions.SplitBehaviorOptions.Default
-																		| Common.StringFunctions.SplitBehaviorOptions.RemoveEmptyEntries);
-					string optKeyword;
-					
-					for(int nIndex = 0; nIndex < parsedComponent.Count; ++nIndex)
-					{
-						optKeyword = parsedComponent[nIndex].Trim();
 
-						if (optKeyword[optKeyword.Length - 1] == ';')
+						if (ignoreKeySpaces.Contains(indexKSTbl.Item1))
 						{
-							optKeyword = optKeyword.Substring(0,optKeyword.Length - 1);
+							continue;
 						}
-						
-						if (optKeyword.StartsWith("compaction", StringComparison.OrdinalIgnoreCase))
-						{
-							var kwOptions = ParseKeyValuePair(optKeyword).Item2;
-							var classPos = kwOptions.IndexOf("class");
-							var classSplit = kwOptions.Substring(classPos).Split(new char[] { ':', ',', '}'});
-							var strategy = classSplit[1].Trim();
-							dataRow["Compaction Strategy"] = RemoveNamespace(strategy);
-						}
-						else if (optKeyword.StartsWith("dclocal_read_repair_chance", StringComparison.OrdinalIgnoreCase))
-						{
-							var assignmentSignPos = optKeyword.IndexOf('=');
 
-							if (assignmentSignPos > 0)
+						dataRow = dtTable.NewRow();
+						dataRow["Keyspace Name"] = indexKSTbl.Item1;
+						dataRow["Name"] = ksTbl.Item2 + "." + indexKSTbl.Item2;
+						dataRow["DDL"] = cqlStr;
+						dataRow["Assocated Table"] = ksTbl.Item1 + "." + ksTbl.Item2;
+						dataRow["Index"] = true;
+
+						var lookforUsingClause = RegExCreateIndexUsing.Split(cqlStr);
+
+						if (lookforUsingClause.Length > 1)
+						{
+							dataRow["Compaction Strategy"] = RemoveNamespace(lookforUsingClause[1]);
+						}
+
+
+						var assocTblRow = dtTable.Rows.Find(new object[] { ksTbl.Item1, ksTbl.Item2 });
+
+						if (assocTblRow != null)
+						{
+							var cqlDDL = assocTblRow["DDL"] as string;
+
+							if (dataRow["Compaction Strategy"] == DBNull.Value)
 							{
-								var numValue = optKeyword.Substring(assignmentSignPos + 1);
-								decimal numObj;
-
-								if (decimal.TryParse(numValue, out numObj))
-								{
-									dataRow["DC Chance"] = numObj;
-								}
-							}					
-						}
-						else if (optKeyword.StartsWith("gc_grace_seconds", StringComparison.OrdinalIgnoreCase))
-						{
-							var assignmentSignPos = optKeyword.IndexOf('=');
-
-							if (assignmentSignPos > 0)
-							{
-								var numValue = optKeyword.Substring(assignmentSignPos + 1);
-								
-								dataRow["GC Grace Period"] = new TimeSpan(0, 0, 0, int.Parse(numValue));
+								dataRow["Compaction Strategy"] = assocTblRow["Compaction Strategy"];
 							}
-						}
-						else if (optKeyword.StartsWith("read_repair_chance", StringComparison.OrdinalIgnoreCase))
-						{
-							var assignmentSignPos = optKeyword.IndexOf('=');
 
-							if (assignmentSignPos > 0)
+							if (!string.IsNullOrEmpty(cqlDDL))
 							{
-								var numValue = optKeyword.Substring(assignmentSignPos + 1);
-								decimal numObj;
+								var colPos = cqlDDL.IndexOf(indexCol);
 
-								if (decimal.TryParse(numValue, out numObj))
+								if (colPos > 0)
 								{
-									dataRow["Chance"] = numObj;
+									var strCol = cqlDDL.Substring(colPos);
+									var colEndPos = strCol.IndexOfAny(new char[] { ',', ')' });
+
+									if (colEndPos > 0)
+									{
+										dataRow["Pritition Key"] = strCol.Substring(0, colEndPos);
+									}
 								}
 							}
 						}
-						else if (optKeyword.StartsWith("speculative_retry", StringComparison.OrdinalIgnoreCase))
-						{
-							var assignmentSignPos = optKeyword.IndexOf('=');
 
-							if (assignmentSignPos > 0)
-							{								
-								dataRow["Policy"] = RemoveQuotes(optKeyword.Substring(assignmentSignPos + 1).Trim());
-							}
-						}
-
-					}
-					
-					dtTable.Rows.Add(dataRow);
-					#endregion
-				}//end of table
-				else if (parsedValues[0].Substring(6,6).TrimStart().ToLower() == "index" || parsedValues[0].Substring(6,7).TrimStart().ToLower() == "custom")
-				{
-					#region index
-					//CREATE INDEX ix_configuration_effective_from ON production_mqh_config.configuration (effective_from);
-					//CREATE INDEX ON users (phones);
-					//CREATE INDEX todo_dates ON users (KEYS(todo));
-					//CREATE CUSTOM INDEX ON users (email) USING 'path.to.the.IndexClass' WITH OPTIONS = {'storage': '/mnt/ssd/indexes/'};
-					//CREATE CUSTOM INDEX taulia_invoice_invoice_business_unit_id_index ON taulia_invoice.invoice (business_unit_id) USING 'com.datastax.bdp.search.solr.Cql3SolrSecondaryIndex';
-					
-					var splits = RegExCreateIndex.Split(cqlStr);
-					Tuple<string,string> indexKSTbl = null;
-					Tuple<string,string> ksTbl;
-					string indexCol = null;
-
-					if (splits.Length == 4)
-					{
-						ksTbl = SplitTableName(splits[1], currentKeySpace);
-						indexCol = splits[2];
-						indexKSTbl = new Tuple<string,string>(ksTbl.Item1, ksTbl.Item2 + "." + "ix_" + indexCol);
+						dtTable.Rows.Add(dataRow);
+						#endregion
 					}
 					else
-					{						
-						ksTbl = SplitTableName(splits[2], currentKeySpace);
-						indexKSTbl = SplitTableName(splits[1], currentKeySpace == null ? ksTbl.Item1 : currentKeySpace);
-						indexCol = splits[3];
-					}
-					
-					if (ignoreKeySpaces.Contains(indexKSTbl.Item1))
 					{
-						continue;
+						cqlStr.Dump(string.Format("Warning: Unrecognized CQL found in file \"{0}\"", cqlDDLFilePath.PathResolved));
 					}
-
-					dataRow = dtTable.NewRow();
-					dataRow["Keyspace Name"] = indexKSTbl.Item1;
-					dataRow["Name"] = ksTbl.Item2 + "." + indexKSTbl.Item2;
-					dataRow["DDL"] = cqlStr;
-					dataRow["Assocated Table"] = ksTbl.Item1 + "." + ksTbl.Item2;
-					
-					var lookforUsingClause = RegExCreateIndexUsing.Split(cqlStr);
-
-					if (lookforUsingClause.Length > 1)
-					{
-						dataRow["Compaction Strategy"] = RemoveNamespace(lookforUsingClause[1]);
-					}
-
-
-					var assocTblRow = dtTable.Rows.Find(new object[] { ksTbl.Item1, ksTbl.Item2 });
-
-					if (assocTblRow != null)
-					{
-						var cqlDDL = assocTblRow["DDL"] as string;
-
-						if (!string.IsNullOrEmpty(cqlDDL))
-						{
-							var colPos = cqlDDL.IndexOf(indexCol);
-							
-							if (colPos > 0)
-							{
-								var strCol = cqlDDL.Substring(colPos);
-								var colEndPos = strCol.IndexOfAny(new char[] { ',', ')'});
-
-								if (colEndPos > 0)
-								{
-									dataRow["Pritition Key"] = strCol.Substring(0,colEndPos);
-								}
-							}
-						}
-					}
-					
-					dtTable.Rows.Add(dataRow);
-					#endregion
 				}
 				else
 				{
 					cqlStr.Dump(string.Format("Warning: Unrecognized CQL found in file \"{0}\"", cqlDDLFilePath.PathResolved));
 				}
 			}
-			else
-			{
-				cqlStr.Dump(string.Format("Warning: Unrecognized CQL found in file \"{0}\"", cqlDDLFilePath.PathResolved));
-			}
 		}
+	}
+	catch (System.Exception ex)
+	{
+		Console.WriteLine("*** Error: Exception \"{0}\" ({1}) occurred while parsing file \"{2}\" Line \"{5}\" within ReadCQLDDLParseIntoDataTable for IpAddress: {3} ({4})",
+							ex.Message,
+							ex.GetType().Name,
+							cqlDDLFilePath.PathResolved,
+							ipAddress,
+							dcName,
+							line);
 	}
 }
 
+static Regex RegEndingDigits = new Regex(@"\d+$",
+										RegexOptions.Compiled);
+										
 void ReadCompactionHistFileParseIntoDataTable(IFilePath cmphistFilePath,
 												string ipAddress,
 												string dcName,
@@ -3286,8 +3361,7 @@ void ReadCompactionHistFileParseIntoDataTable(IFilePath cmphistFilePath,
 		dtCmpHist.Columns.Add("Before Size (MB)", typeof(decimal));
 		dtCmpHist.Columns.Add("SSTable Size After", typeof(long));
 		dtCmpHist.Columns.Add("After Size (MB)", typeof(decimal));
-		dtCmpHist.Columns.Add("Compaction Strategy", typeof(string));
-		dtCmpHist.Columns["Compaction Strategy"].AllowDBNull = true;
+		dtCmpHist.Columns.Add("Compaction Strategy", typeof(string)).AllowDBNull = true;
 		dtCmpHist.Columns.Add("Partitions Merged (tables:rows)", typeof(string));
 		
 		//dtFSStats.PrimaryKey = new System.Data.DataColumn[] { dtFSStats.Columns[0],  dtFSStats.Columns[1],  dtFSStats.Columns[2],  dtFSStats.Columns[3], dtFSStats.Columns[4] };
@@ -3340,7 +3414,22 @@ void ReadCompactionHistFileParseIntoDataTable(IFilePath cmphistFilePath,
 
 				currentKeySpace = ksItem == null ? "?" : ksItem.KeySpaceName;
 				currentTable = ksItem == null ? parsedLine[1] : ksItem.TableName;
-				offSet = 1;
+
+				if (ksItem != null && parsedLine[1].Length > currentKeySpace.Length + currentTable.Length)
+				{
+					parsedLine[1] =  parsedLine[1].Substring(currentKeySpace.Length + currentTable.Length);
+					offSet = 2;
+				}
+				else
+				{
+					if (ksItem == null)
+					{
+						line.Dump(string.Format("Warning: Line Ignored. Invalid line found in Compaction Hististory File \"{0}\"", cmphistFilePath.PathResolved));
+						continue;
+					}
+					
+					offSet = 1;
+				}
 			}
 			else
 			{
@@ -3348,13 +3437,17 @@ void ReadCompactionHistFileParseIntoDataTable(IFilePath cmphistFilePath,
 
 				if (parsedLine[2].Length > 30)
 				{
-					var ksItem = kstblExists
-									.Where(e => e.KeySpaceName == currentKeySpace && parsedLine[2].StartsWith(e.TableName))
-									.OrderByDescending(e => e.LogName.Length).FirstOrDefault();
+					var strDigits = RegEndingDigits.Match(parsedLine[2]);
 
-					currentTable = ksItem == null ? parsedLine[2] : ksItem.TableName;
-					parsedLine[2] = currentTable == null ? "0" : parsedLine[2].Substring(currentTable.Length);
+					currentTable = parsedLine[2].Substring(0,parsedLine[2].Length - strDigits.Value.Length);
+					parsedLine[2] = strDigits.Value;
 					offSet = 1;
+					
+					if (string.IsNullOrEmpty(parsedLine[2]))
+					{
+						line.Dump(string.Format("Warning: Line Ignored. Invalid line found in Compaction Hististory File \"{0}\"", cmphistFilePath.PathResolved));
+						continue;
+					}
 				}
 				else
 				{
@@ -4365,14 +4458,18 @@ void ParseCassandraLogIntoStatusLogDataTable(DataTable dtroCLog,
 		
 		var statusLogView = new DataView(dtroCLog,
 											"[Item] in ('GCInspector.java', 'StatusLogger.java', 'CompactionTask.java')" +
-												" or ([Item] in ('CompactionController.java', 'SSTableWriter.java', 'SliceQueryFilter.java') and [Flagged] = true and [Assocated Item] is not null)",
+												" or ([Item] in ('CompactionController.java', 'SSTableWriter.java', 'SliceQueryFilter.java', 'CqlSlowLogWriter.java') and [Flagged] = true and [Exception] is not null)",
 											"[TimeStamp] ASC, [Item] ASC",
 											DataViewRowState.CurrentRows);
 		var gcLatencies = new List<int>();
 		var compactionLatencies = new List<Tuple<string,string,int>>();
+		var compactionRates = new List<Tuple<string,string,decimal>>();
 		var partitionLargeSizes = new List<Tuple<string,string,decimal>>();
 		var tombstoneCounts = new List<Tuple<string,string,int>>();
-			
+		var tpStatusCounts = new List<Tuple<string,long,long,long,long,long>>();
+		var statusMemTables = new List<Tuple<string,string,long,decimal>>();
+		var tpSlowQueries = new List<int>();
+		
 		string item;
 		
 		foreach (DataRowView vwDataRow in statusLogView)
@@ -4551,6 +4648,13 @@ void ParseCassandraLogIntoStatusLogDataTable(DataTable dtroCLog,
 						dataRow["Completed"] = long.Parse(splits[4]);
 						dataRow["Blocked"] = long.Parse(splits[5]);
 						dataRow["All Time Blocked"] = long.Parse(splits[6]);
+
+						tpStatusCounts.Add(new Tuple<string, long, long, long, long, long>(splits[1], 
+																							(long) dataRow["Active"],
+																							(long) dataRow["Pending"],
+																							(long) dataRow["Completed"],
+																							(long) dataRow["Blocked"],
+																							(long) dataRow["All Time Blocked"]));
 					}
 					else
 					{
@@ -4598,8 +4702,13 @@ void ParseCassandraLogIntoStatusLogDataTable(DataTable dtroCLog,
 					dataRow["Table"] = ksTable.Item2;
 					dataRow["MemTable OPS"] = long.Parse(splits[2]);
 					dataRow["Data (mb)"] = ConvertInToMB(splits[3], "bytes");
-
+																												
 					dtCStatusLog.Rows.Add(dataRow);
+
+					statusMemTables.Add(new Tuple<string, string, long, decimal>(ksTable.Item1,
+																					ksTable.Item2,
+																					(long)dataRow["MemTable OPS"],
+																					(decimal)dataRow["Data (mb)"]));
 					continue;
 				}
 				#endregion
@@ -4627,6 +4736,7 @@ void ParseCassandraLogIntoStatusLogDataTable(DataTable dtroCLog,
 						
 						var dataRow = dtCStatusLog.NewRow();
 						var time = DetermineTime(splits[6]);
+						var rate = decimal.Parse(splits[7].Replace(",", string.Empty));
 		
 						dataRow["Timestamp"] = vwDataRow["Timestamp"];
 						dataRow["Data Center"] = dcName;
@@ -4639,12 +4749,13 @@ void ParseCassandraLogIntoStatusLogDataTable(DataTable dtroCLog,
 						dataRow["From (mb)"] = ConvertInToMB(splits[3], "bytes");
 						dataRow["To (mb)"] = ConvertInToMB(splits[4], "bytes");
 						dataRow["Latancy (ms)"] = time;
-						dataRow["Rate (MB/s)"] = decimal.Parse(splits[7].Replace(",", string.Empty));
+						dataRow["Rate (MB/s)"] = rate;
 						dataRow["Partitions Merged"] = splits[8] + ":" + splits[9];
 						dataRow["Merge Counts"] = splits[10];
 
 						dtCStatusLog.Rows.Add(dataRow);
 						compactionLatencies.Add(new Tuple<string,string,int>(ksItem.KeySpaceName, ksItem.TableName, (int) time));
+						compactionRates.Add(new Tuple<string,string,decimal>(ksItem.KeySpaceName, ksItem.TableName, rate));
 					}
 				}
 				#endregion
@@ -4694,7 +4805,15 @@ void ParseCassandraLogIntoStatusLogDataTable(DataTable dtroCLog,
 
 				tombstoneCounts.Add(new Tuple<string, string, int>(kstblSplit.Item1, kstblSplit.Item2, partSize.Value));
 
-			#endregion
+				#endregion
+			}
+			else if (item == "CqlSlowLogWriter.java")
+			{
+				#region CqlSlowLogWriter
+				
+				tpSlowQueries.Add((int) vwDataRow["Assocated Value"]);
+
+				#endregion
 			}
 			else
 			{
@@ -4759,9 +4878,177 @@ void ParseCassandraLogIntoStatusLogDataTable(DataTable dtroCLog,
 				dataRow["Data Center"] = dcName;
 				dataRow["Node IPAddress"] = ipAddress;
 				dataRow["Attribute"] = "GC occurrences";
-				dataRow["Completed"] = gcLatencies.Count;
+				dataRow["Occurrences"] = gcLatencies.Count;
 
 				dtTPStats.Rows.Add(dataRow);
+			}
+
+			#endregion
+
+			#region tpSlowQueries
+
+			tpSlowQueries.RemoveAll(x => x <= 0);
+
+			if (tpSlowQueries.Count > 0)
+			{
+				Console.WriteLine("Adding Slow Quries ({2}) to TPStats for \"{0}\" \"{1}\"", dcName, ipAddress, tpSlowQueries.Count);
+
+				var slowMax = tpSlowQueries.Max();
+				var slowMin = tpSlowQueries.Min();
+				var slowAvg = (int)tpSlowQueries.Average();
+
+				var dataRow = dtTPStats.NewRow();
+
+				dataRow["Source"] = "Cassandra Log";
+				dataRow["Data Center"] = dcName;
+				dataRow["Node IPAddress"] = ipAddress;
+				dataRow["Attribute"] = "Slow Query minimum latencty";
+				dataRow["Latency (ms)"] = slowMin;
+
+				dtTPStats.Rows.Add(dataRow);
+
+				dataRow = dtTPStats.NewRow();
+
+				dataRow["Source"] = "Cassandra Log";
+				dataRow["Data Center"] = dcName;
+				dataRow["Node IPAddress"] = ipAddress;
+				dataRow["Attribute"] = "Slow Query maximum latencty";
+				dataRow["Latency (ms)"] = slowMax;
+
+				dtTPStats.Rows.Add(dataRow);
+
+				dataRow = dtTPStats.NewRow();
+
+				dataRow["Source"] = "Cassandra Log";
+				dataRow["Data Center"] = dcName;
+				dataRow["Node IPAddress"] = ipAddress;
+				dataRow["Attribute"] = "Slow Query mean latencty";
+				dataRow["Latency (ms)"] = slowAvg;
+
+				dtTPStats.Rows.Add(dataRow);
+
+				dataRow = dtTPStats.NewRow();
+
+				dataRow["Source"] = "Cassandra Log";
+				dataRow["Data Center"] = dcName;
+				dataRow["Node IPAddress"] = ipAddress;
+				dataRow["Attribute"] = "Slow Query occurrences";
+				dataRow["Occurrences"] = tpSlowQueries.Count;
+
+				dtTPStats.Rows.Add(dataRow);
+			}
+
+			#endregion
+
+			#region tpStatusCounts
+
+			tpStatusCounts.RemoveAll(x => x.Item2 == 0 && x.Item3 == 0 && x.Item4 == 0 && x.Item5 == 0 && x.Item6 == 0);
+
+			if (tpStatusCounts.Count > 0)
+			{
+				Console.WriteLine("Adding Pool Items ({2}) to TPStats for \"{0}\" \"{1}\"", dcName, ipAddress, tpStatusCounts.Count);
+				
+				var tpItems = from tpItem in tpStatusCounts
+								group tpItem by new { tpItem.Item1 }
+									  	into g
+								select new
+								{
+									Item1 = g.Key.Item1,								
+									maxItem2 = g.Max(s => s.Item2),
+									maxItem3 = g.Max(s => s.Item3),
+									maxItem4 = g.Max(s => s.Item4),
+									maxItem5 = g.Max(s => s.Item5),
+									maxItem6 = g.Max(s => s.Item6),
+									
+									minItem2 = g.Min(s => s.Item2),
+									minItem3 = g.Min(s => s.Item3),
+									minItem4 = g.Min(s => s.Item4),
+									minItem5 = g.Min(s => s.Item5),
+									minItem6 = g.Min(s => s.Item6),
+									
+									avgItem2 = (long) g.Average(s => s.Item2),
+									avgItem3 = (long) g.Average(s => s.Item3),
+									avgItem4 = (long) g.Average(s => s.Item4),
+									avgItem5 = (long) g.Average(s => s.Item5),
+									avgItem6 = (long) g.Average(s => s.Item6),
+									
+									totItem2 = g.Sum(s => s.Item2),
+									totItem3 = g.Sum(s => s.Item3),
+									totItem4 = g.Sum(s => s.Item4),
+									totItem5 = g.Sum(s => s.Item5),
+									totItem6 = g.Sum(s => s.Item6), 
+									
+									Count = g.Count()
+								};
+								
+				foreach(var tpItem in tpItems)
+				{
+					var dataRow = dtTPStats.NewRow();
+					
+					dataRow["Source"] = "Cassandra Log";
+					dataRow["Data Center"] = dcName;
+					dataRow["Node IPAddress"] = ipAddress;
+					dataRow["Attribute"] = tpItem.Item1 + " maximum";
+					dataRow["Active"] = tpItem.maxItem2;					
+                    dataRow["Pending"] = tpItem.maxItem3;
+					dataRow["Completed"] = tpItem.maxItem4;
+					dataRow["Blocked"] = tpItem.maxItem5;
+					dataRow["All time blocked"] = tpItem.maxItem6;
+
+					dtTPStats.Rows.Add(dataRow);
+
+					dataRow = dtTPStats.NewRow();
+
+					dataRow["Source"] = "Cassandra Log";
+					dataRow["Data Center"] = dcName;
+					dataRow["Node IPAddress"] = ipAddress;
+					dataRow["Attribute"] = tpItem.Item1 + " minimum";
+					dataRow["Active"] = tpItem.minItem2;
+					dataRow["Pending"] = tpItem.minItem3;
+					dataRow["Completed"] = tpItem.minItem4;
+					dataRow["Blocked"] = tpItem.minItem5;
+					dataRow["All time blocked"] = tpItem.minItem6;
+
+					dtTPStats.Rows.Add(dataRow);
+
+					dataRow = dtTPStats.NewRow();
+
+					dataRow["Source"] = "Cassandra Log";
+					dataRow["Data Center"] = dcName;
+					dataRow["Node IPAddress"] = ipAddress;
+					dataRow["Attribute"] = tpItem.Item1 + " mean";
+					dataRow["Active"] = tpItem.avgItem2;
+					dataRow["Pending"] = tpItem.avgItem3;
+					dataRow["Completed"] = tpItem.avgItem4;
+					dataRow["Blocked"] = tpItem.avgItem5;
+					dataRow["All time blocked"] = tpItem.avgItem6;
+
+					dtTPStats.Rows.Add(dataRow);
+
+					dataRow = dtTPStats.NewRow();
+
+					dataRow["Source"] = "Cassandra Log";
+					dataRow["Data Center"] = dcName;
+					dataRow["Node IPAddress"] = ipAddress;
+					dataRow["Attribute"] = tpItem.Item1 + " Total";
+					dataRow["Active"] = tpItem.totItem2;
+					dataRow["Pending"] = tpItem.totItem3;
+					dataRow["Completed"] = tpItem.totItem4;
+					dataRow["Blocked"] = tpItem.totItem5;
+					dataRow["All time blocked"] = tpItem.totItem6;
+
+					dtTPStats.Rows.Add(dataRow);
+
+					dataRow = dtTPStats.NewRow();
+
+					dataRow["Source"] = "Cassandra Log";
+					dataRow["Data Center"] = dcName;
+					dataRow["Node IPAddress"] = ipAddress;
+					dataRow["Attribute"] = tpItem.Item1 + " occurrences";
+					dataRow["Occurrences"] = tpItem.Count;
+					
+					dtTPStats.Rows.Add(dataRow);
+				}
 			}
 
 			#endregion
@@ -4856,9 +5143,82 @@ void ParseCassandraLogIntoStatusLogDataTable(DataTable dtroCLog,
 			#endregion
 			}
 
+			if (compactionLatencies.Count > 0)
+			{
+				#region compactionRates
+
+				initializeCFStatsDataTable(dtCFStats);
+
+				compactionRates.RemoveAll(x => x.Item3 <= 0);
+
+				if (compactionRates.Count > 0)
+				{
+					Console.WriteLine("Adding Compaction Rates ({2}) to CFStats for \"{0}\" \"{1}\"", dcName, ipAddress, compactionRates.Count);
+
+					var compStats = from cmpItem in compactionRates
+									group cmpItem by new { cmpItem.Item1, cmpItem.Item2 }
+								  	into g
+									select new
+									{
+										KeySpace = g.Key.Item1,
+										Table = g.Key.Item2,
+										Max = g.Max(s => s.Item3),
+										Min = g.Min(s => s.Item3),
+										Avg = g.Average(s => s.Item3),
+										Count = g.Count()
+									};
+
+					foreach (var statItem in compStats)
+					{
+						var dataRow = dtCFStats.NewRow();
+
+						dataRow["Source"] = "Cassandra Log";
+						dataRow["Data Center"] = dcName;
+						dataRow["Node IPAddress"] = ipAddress;
+						dataRow["KeySpace"] = statItem.KeySpace;
+						dataRow["Table"] = statItem.Table;
+						dataRow["Attribute"] = "Compaction maximum rate";
+						dataRow["Value"] = statItem.Max;
+						dataRow["(Value)"] = statItem.Max;
+						dataRow["Unit of Measure"] = "mb/sec";
+
+						dtCFStats.Rows.Add(dataRow);
+
+						dataRow = dtCFStats.NewRow();
+
+						dataRow["Source"] = "Cassandra Log";
+						dataRow["Data Center"] = dcName;
+						dataRow["Node IPAddress"] = ipAddress;
+						dataRow["KeySpace"] = statItem.KeySpace;
+						dataRow["Table"] = statItem.Table;
+						dataRow["Attribute"] = "Compaction minimum rate";
+						dataRow["Value"] = statItem.Min;
+						dataRow["(Value)"] = statItem.Min;
+						dataRow["Unit of Measure"] = "mb/sec";
+
+						dtCFStats.Rows.Add(dataRow);
+
+						dataRow = dtCFStats.NewRow();
+
+						dataRow["Source"] = "Cassandra Log";
+						dataRow["Data Center"] = dcName;
+						dataRow["Node IPAddress"] = ipAddress;
+						dataRow["KeySpace"] = statItem.KeySpace;
+						dataRow["Table"] = statItem.Table;
+						dataRow["Attribute"] = "Compaction mean rate";
+						dataRow["Value"] = statItem.Avg;
+						dataRow["(Value)"] = statItem.Avg;
+						dataRow["Unit of Measure"] = "mb/sec";
+
+						dtCFStats.Rows.Add(dataRow);
+					}
+				}
+				#endregion
+			}
+
 			if (partitionLargeSizes.Count > 0)
 			{
-			#region partitionLargeSizes
+				#region partitionLargeSizes
 
 				initializeCFStatsDataTable(dtCFStats);
 
@@ -5030,6 +5390,138 @@ void ParseCassandraLogIntoStatusLogDataTable(DataTable dtroCLog,
 
 			#endregion
 			}
+
+			if (statusMemTables.Count > 0)
+			{
+				#region statusMemTables
+
+				initializeCFStatsDataTable(dtCFStats);
+
+				statusMemTables.RemoveAll(x => x.Item3 <= 0 && x.Item4 <= 0);
+
+				if (statusMemTables.Count > 0)
+				{
+					Console.WriteLine("Adding MemTables Stats ({2}) to CFStats for \"{0}\" \"{1}\"", dcName, ipAddress, statusMemTables.Count);
+
+					var memtblStats = from cmpItem in statusMemTables
+										group cmpItem by new { cmpItem.Item1, cmpItem.Item2 }
+									  	into g
+										select new
+										{
+											KeySpace = g.Key.Item1,
+											Table = g.Key.Item2,
+											maxItem3 = g.Max(s => s.Item3),
+											minItem3 = g.Min(s => s.Item3),
+											avgItem3 = (long)g.Average(s => s.Item3),
+											maxItem4 = g.Max(s => s.Item4),
+											minItem4 = g.Min(s => s.Item4),
+											avgItem4 = g.Average(s => s.Item4),
+											Count = g.Count()
+										};
+
+					foreach (var statItem in memtblStats)
+					{
+						var dataRow = dtCFStats.NewRow();
+
+						dataRow["Source"] = "Cassandra Log";
+						dataRow["Data Center"] = dcName;
+						dataRow["Node IPAddress"] = ipAddress;
+						dataRow["KeySpace"] = statItem.KeySpace;
+						dataRow["Table"] = statItem.Table;
+						dataRow["Attribute"] = "MemTable OPS maximum";
+						dataRow["Value"] = statItem.maxItem3;
+						dataRow["(value)"] = statItem.maxItem3;
+						dataRow["Unit of Measure"] = "Operations per Second";
+
+						dtCFStats.Rows.Add(dataRow);
+
+						dataRow = dtCFStats.NewRow();
+
+						dataRow["Source"] = "Cassandra Log";
+						dataRow["Data Center"] = dcName;
+						dataRow["Node IPAddress"] = ipAddress;
+						dataRow["KeySpace"] = statItem.KeySpace;
+						dataRow["Table"] = statItem.Table;						
+						dataRow["Attribute"] = "MemTable OPS minimum";
+						dataRow["Value"] = statItem.minItem3;
+						dataRow["(value)"] = statItem.minItem3;
+						dataRow["Unit of Measure"] = "Operations per Second";
+
+						dtCFStats.Rows.Add(dataRow);
+
+						dataRow = dtCFStats.NewRow();
+
+						dataRow["Source"] = "Cassandra Log";
+						dataRow["Data Center"] = dcName;
+						dataRow["Node IPAddress"] = ipAddress;
+						dataRow["KeySpace"] = statItem.KeySpace;
+						dataRow["Table"] = statItem.Table;						
+						dataRow["Attribute"] = "MemTable OPS mean";
+						dataRow["Value"] = statItem.avgItem3;
+						dataRow["(value)"] = statItem.avgItem3;
+						dataRow["Unit of Measure"] = "Operations per Second";
+
+						dtCFStats.Rows.Add(dataRow);
+
+						dataRow = dtCFStats.NewRow();
+
+						dataRow["Source"] = "Cassandra Log";
+						dataRow["Data Center"] = dcName;
+						dataRow["Node IPAddress"] = ipAddress;
+						dataRow["KeySpace"] = statItem.KeySpace;
+						dataRow["Table"] = statItem.Table;
+						dataRow["Attribute"] = "MemTable occurrences";
+						dataRow["Value"] = statItem.Count;
+						dataRow["(Value)"] = statItem.Count;
+						
+						dtCFStats.Rows.Add(dataRow);
+
+						//Size
+						dataRow = dtCFStats.NewRow();
+
+						dataRow["Source"] = "Cassandra Log";
+						dataRow["Data Center"] = dcName;
+						dataRow["Node IPAddress"] = ipAddress;
+						dataRow["KeySpace"] = statItem.KeySpace;
+						dataRow["Table"] = statItem.Table;
+						dataRow["Attribute"] = "MemTable Size maximum";
+						dataRow["Value"] = (int)(statItem.maxItem4 * BytesToMB);
+						dataRow["Size in MB"] = statItem.maxItem4;
+						dataRow["Unit of Measure"] = "bytes";
+
+						dtCFStats.Rows.Add(dataRow);
+
+						dataRow = dtCFStats.NewRow();
+
+						dataRow["Source"] = "Cassandra Log";
+						dataRow["Data Center"] = dcName;
+						dataRow["Node IPAddress"] = ipAddress;
+						dataRow["KeySpace"] = statItem.KeySpace;
+						dataRow["Table"] = statItem.Table;
+						dataRow["Attribute"] = "MemTable Size minimum";
+						dataRow["Value"] = (int)(statItem.minItem4 * BytesToMB);
+						dataRow["Size in MB"] = statItem.minItem4;
+						dataRow["Unit of Measure"] = "bytes";
+
+						dtCFStats.Rows.Add(dataRow);
+
+						dataRow = dtCFStats.NewRow();
+
+						dataRow["Source"] = "Cassandra Log";
+						dataRow["Data Center"] = dcName;
+						dataRow["Node IPAddress"] = ipAddress;
+						dataRow["KeySpace"] = statItem.KeySpace;
+						dataRow["Table"] = statItem.Table;
+						dataRow["Attribute"] = "MemTable Size mean";
+						dataRow["Value"] = (int)(statItem.avgItem4 * BytesToMB);
+						dataRow["Size in MB"] = statItem.avgItem4;
+						dataRow["Unit of Measure"] = "bytes";
+						dtCFStats.Rows.Add(dataRow);
+					}
+				}
+
+				#endregion
+			}
 		}
 
 		#endregion
@@ -5047,9 +5539,9 @@ void ParseOSMachineInfoDataTable(IDirectoryPath directoryPath,
 	{
 		if (dtOSMachineInfo.Columns.Count == 0)
 		{
-			dtOSMachineInfo.Columns.Add("Node IPAddress", typeof(string)).Unique = true;
-			dtOSMachineInfo.PrimaryKey = new System.Data.DataColumn[] { dtOSMachineInfo.Columns["Node IPAddress"] };
+			dtOSMachineInfo.Columns.Add("Node IPAddress", typeof(string)).Unique = true;			
 			dtOSMachineInfo.Columns.Add("Data Center", typeof(string)).AllowDBNull = true;
+			dtOSMachineInfo.PrimaryKey = new System.Data.DataColumn[] { dtOSMachineInfo.Columns["Node IPAddress"] };
 
 			dtOSMachineInfo.Columns.Add("Instance Type", typeof(string)).AllowDBNull = true;//c
 			dtOSMachineInfo.Columns.Add("CPU Architecture", typeof(string));
@@ -5105,161 +5597,173 @@ void ParseOSMachineInfoDataTable(IDirectoryPath directoryPath,
 			dtOSMachineInfo.Columns.Add("Tolerance (ppm)", typeof(decimal)); //as
 		}
 	}
-	
+
 	DataRow dataRow;
+	IFilePath filePath = null;
 
-	lock (dtOSMachineInfo)
+	try
 	{
-		dataRow = dtOSMachineInfo.NewRow();
-	}
-	
-	dataRow["Node IPAddress"] = ipAddress;
-	dataRow["Data Center"] = dcName;
-	
-	foreach (var fileName in osmachineFiles)
-	{
-		IFilePath filePath;
-
-		if (directoryPath.Clone().MakeFile(fileName, out filePath))
+		lock (dtOSMachineInfo)
 		{
-			if (filePath.Exist())
+			dataRow = dtOSMachineInfo.NewRow();
+		}
+
+		dataRow["Node IPAddress"] = ipAddress;
+		dataRow["Data Center"] = dcName;
+
+		foreach (var fileName in osmachineFiles)
+		{
+			
+			if (directoryPath.Clone().MakeFile(fileName, out filePath))
 			{
-				if (fileName.Contains("machine-info"))
+				if (filePath.Exist())
 				{
-					var infoObject = ParseJson(filePath.ReadAllText());
-					
-					dataRow["CPU Architecture"] = infoObject["arch"];
-					dataRow["Physical Memory (MB)"] = infoObject["memory"];
-				}
-				else if (fileName.Contains("os-info"))
-				{
-					var infoObject = ParseJson(filePath.ReadAllText());
-					
-					dataRow["OS"] = infoObject["sub_os"];
-					dataRow["OS Version"] = infoObject["os_version"];
-				}
-				else if (fileName.Contains("cpu"))
-				{
-					var infoObject = ParseJson(filePath.ReadAllText());
-					
-					dataRow["Idle"] = infoObject["%idle"];
-					dataRow["System"] = infoObject["%system"];
-					dataRow["User"] = infoObject["%user"];
-				}
-				else if (fileName.Contains("load_avg"))
-				{
-					dataRow["Average"] = decimal.Parse(filePath.ReadAllText());
-				}
-				else if (fileName.Contains("memory"))
-				{
-					var infoObject = ParseJson(filePath.ReadAllText());
-					
-					if(infoObject.ContainsKey("available")) dataRow["Available"] = infoObject["available"];
-					if(infoObject.ContainsKey("cache")) dataRow["Cache"] = infoObject["cache"];
-					if(infoObject.ContainsKey("cached")) dataRow["Cache"] = infoObject["cached"];
-					dataRow["Buffers"] = infoObject["buffers"];
-					dataRow["Shared"] = infoObject["shared"];
-					dataRow["Free"] = infoObject["free"];
-					dataRow["Used"] = infoObject["used"];
-				}
-				else if (fileName.Contains("java_system_properties"))
-				{
-					var infoObject = ParseJson(filePath.ReadAllText());
-					
-					dataRow["Vendor"] = infoObject["java.vendor"];
-					dataRow["Model"] = infoObject["sun.arch.data.model"];
-					dataRow["Runtime Name"] = infoObject["java.runtime.name"];
-					dataRow["Runtime Version"] = infoObject["java.runtime.version"];
-					dataRow["TimeZone"] = ((string)infoObject["user.timezone"])
-											.Replace((string) infoObject["file.separator"], "/");
+					if (fileName.Contains("machine-info"))
+					{
+						var infoObject = ParseJson(filePath.ReadAllText());
 
-					if (infoObject.ContainsKey("dse.system_cpu_cores"))
-					{
-						dataRow["Cores"] = infoObject["dse.system_cpu_cores"];
+						dataRow["CPU Architecture"] = infoObject["arch"];
+						dataRow["Physical Memory (MB)"] = infoObject["memory"];
 					}
-				}
-				else if (fileName.Contains("java_heap"))
-				{
-					var infoObject = ParseJson(filePath.ReadAllText());
-					var nonHeapJson = (Dictionary<string,object>) infoObject["NonHeapMemoryUsage"];
-					var heapJson = (Dictionary<string,object>) infoObject["HeapMemoryUsage"];
-					
-					//Java NonHeapMemoryUsage
-					dataRow["Non-Heap Committed"] = ((dynamic) (nonHeapJson["committed"])) / BytesToMB;
-					dataRow["Non-Heap Init"] = ((dynamic) (nonHeapJson["init"])) / BytesToMB;
-					dataRow["Non-Heap Max"] = ((dynamic) (nonHeapJson["max"])) / BytesToMB;
-					dataRow["Non-Heap Used"] = ((dynamic) (nonHeapJson["used"])) / BytesToMB;
-					//Javaa HeapMemoryUsage
-					dataRow["Heap Committed"] = ((dynamic) (heapJson["committed"])) / BytesToMB;
-					dataRow["Heap Init"] = ((dynamic) (heapJson["init"])) / BytesToMB;
-					dataRow["Heap Max"] = ((dynamic) (heapJson["max"])) / BytesToMB;
-					dataRow["Heap Used"] = ((dynamic) (heapJson["used"])) / BytesToMB;
-				}
-				else if (fileName.Contains("ntpstat"))
-				{
-					var fileText = filePath.ReadAllText();
-					var words = StringFunctions.Split(fileText,
-														' ',
-														StringFunctions.IgnoreWithinDelimiterFlag.Text,
-														StringFunctions.SplitBehaviorOptions.RemoveEmptyEntries | Common.StringFunctions.SplitBehaviorOptions.StringTrimEachElement);
-					for(int nIndex = 0; nIndex < words.Count; ++nIndex)
+					else if (fileName.Contains("os-info"))
 					{
-						var element = words[nIndex];
-						
-						if (element == "within")
+						var infoObject = ParseJson(filePath.ReadAllText());
+
+						dataRow["OS"] = infoObject["sub_os"];
+						dataRow["OS Version"] = infoObject["os_version"];
+					}
+					else if (fileName.Contains("cpu"))
+					{
+						var infoObject = ParseJson(filePath.ReadAllText());
+
+						dataRow["Idle"] = infoObject["%idle"];
+						dataRow["System"] = infoObject["%system"];
+						dataRow["User"] = infoObject["%user"];
+					}
+					else if (fileName.Contains("load_avg"))
+					{
+						dataRow["Average"] = decimal.Parse(filePath.ReadAllText());
+					}
+					else if (fileName.Contains("memory"))
+					{
+						var infoObject = ParseJson(filePath.ReadAllText());
+
+						if (infoObject.ContainsKey("available")) dataRow["Available"] = infoObject["available"];
+						if (infoObject.ContainsKey("cache")) dataRow["Cache"] = infoObject["cache"];
+						if (infoObject.ContainsKey("cached")) dataRow["Cache"] = infoObject["cached"];
+						dataRow["Buffers"] = infoObject["buffers"];
+						dataRow["Shared"] = infoObject["shared"];
+						dataRow["Free"] = infoObject["free"];
+						dataRow["Used"] = infoObject["used"];
+					}
+					else if (fileName.Contains("java_system_properties"))
+					{
+						var infoObject = ParseJson(filePath.ReadAllText());
+
+						dataRow["Vendor"] = infoObject["java.vendor"];
+						dataRow["Model"] = infoObject["sun.arch.data.model"];
+						dataRow["Runtime Name"] = infoObject["java.runtime.name"];
+						dataRow["Runtime Version"] = infoObject["java.runtime.version"];
+						dataRow["TimeZone"] = ((string)infoObject["user.timezone"])
+												.Replace((string)infoObject["file.separator"], "/");
+
+						if (infoObject.ContainsKey("dse.system_cpu_cores"))
 						{
-							dataRow["Correction (ms)"] = DetermineTime(words[++nIndex]);
-						}
-						else if (element == "every")
-						{
-							dataRow["Polling (secs)"] = DetermineTime(words[++nIndex]);
+							dataRow["Cores"] = infoObject["dse.system_cpu_cores"];
 						}
 					}
-				}
-				else if(fileName.Contains("ntptime"))
-				{
-					var fileText = filePath.ReadAllText();
-					var words = StringFunctions.Split(fileText,
-														' ',
-														StringFunctions.IgnoreWithinDelimiterFlag.Text,
-														StringFunctions.SplitBehaviorOptions.RemoveEmptyEntries | Common.StringFunctions.SplitBehaviorOptions.StringTrimEachElement);
-					for (int nIndex = 0; nIndex < words.Count; ++nIndex)
+					else if (fileName.Contains("java_heap"))
 					{
-						var element = words[nIndex];
+						var infoObject = ParseJson(filePath.ReadAllText());
+						var nonHeapJson = (Dictionary<string, object>)infoObject["NonHeapMemoryUsage"];
+						var heapJson = (Dictionary<string, object>)infoObject["HeapMemoryUsage"];
 
-						if (element == "maximum")
+						//Java NonHeapMemoryUsage
+						dataRow["Non-Heap Committed"] = ((dynamic)(nonHeapJson["committed"])) / BytesToMB;
+						dataRow["Non-Heap Init"] = ((dynamic)(nonHeapJson["init"])) / BytesToMB;
+						dataRow["Non-Heap Max"] = ((dynamic)(nonHeapJson["max"])) / BytesToMB;
+						dataRow["Non-Heap Used"] = ((dynamic)(nonHeapJson["used"])) / BytesToMB;
+						//Javaa HeapMemoryUsage
+						dataRow["Heap Committed"] = ((dynamic)(heapJson["committed"])) / BytesToMB;
+						dataRow["Heap Init"] = ((dynamic)(heapJson["init"])) / BytesToMB;
+						dataRow["Heap Max"] = ((dynamic)(heapJson["max"])) / BytesToMB;
+						dataRow["Heap Used"] = ((dynamic)(heapJson["used"])) / BytesToMB;
+					}
+					else if (fileName.Contains("ntpstat"))
+					{
+						var fileText = filePath.ReadAllText();
+						var words = StringFunctions.Split(fileText,
+															' ',
+															StringFunctions.IgnoreWithinDelimiterFlag.Text,
+															StringFunctions.SplitBehaviorOptions.RemoveEmptyEntries | Common.StringFunctions.SplitBehaviorOptions.StringTrimEachElement);
+						for (int nIndex = 0; nIndex < words.Count; ++nIndex)
 						{
-							dataRow["Maximum Error (us)"] = DetermineTime(words[nIndex += 2]);
+							var element = words[nIndex];
+
+							if (element == "within")
+							{
+								dataRow["Correction (ms)"] = DetermineTime(words[++nIndex]);
+							}
+							else if (element == "every")
+							{
+								dataRow["Polling (secs)"] = DetermineTime(words[++nIndex]);
+							}
 						}
-						else if (element == "estimated")
+					}
+					else if (fileName.Contains("ntptime"))
+					{
+						var fileText = filePath.ReadAllText();
+						var words = StringFunctions.Split(fileText,
+															' ',
+															StringFunctions.IgnoreWithinDelimiterFlag.Text,
+															StringFunctions.SplitBehaviorOptions.RemoveEmptyEntries | Common.StringFunctions.SplitBehaviorOptions.StringTrimEachElement);
+						for (int nIndex = 0; nIndex < words.Count; ++nIndex)
 						{
-							dataRow["Estimated Error (us)"] = DetermineTime(words[nIndex += 2]);
-						}
-						else if (element == "constant")
-						{
-							dataRow["Time Constant"] = DetermineTime(words[++nIndex]);
-						}
-						else if (element == "precision")
-						{
-							dataRow["Precision (us)"] = DetermineTime(words[++nIndex]);
-						}
-						else if (element == "frequency")
-						{
-							dataRow["Frequency (ppm)"] = DetermineTime(words[++nIndex]);
-						}
-						else if (element == "tolerance")
-						{
-							dataRow["Tolerance (ppm)"] = DetermineTime(words[++nIndex]);
+							var element = words[nIndex];
+
+							if (element == "maximum")
+							{
+								dataRow["Maximum Error (us)"] = DetermineTime(words[nIndex += 2]);
+							}
+							else if (element == "estimated")
+							{
+								dataRow["Estimated Error (us)"] = DetermineTime(words[nIndex += 2]);
+							}
+							else if (element == "constant")
+							{
+								dataRow["Time Constant"] = DetermineTime(words[++nIndex]);
+							}
+							else if (element == "precision")
+							{
+								dataRow["Precision (us)"] = DetermineTime(words[++nIndex]);
+							}
+							else if (element == "frequency")
+							{
+								dataRow["Frequency (ppm)"] = DetermineTime(words[++nIndex]);
+							}
+							else if (element == "tolerance")
+							{
+								dataRow["Tolerance (ppm)"] = DetermineTime(words[++nIndex]);
+							}
 						}
 					}
 				}
 			}
 		}
-	}
 
-	lock (dtOSMachineInfo)
+		lock (dtOSMachineInfo)
+		{
+			dtOSMachineInfo.Rows.Add(dataRow);
+		}
+	}
+	catch (System.Exception e)
 	{
-		dtOSMachineInfo.Rows.Add(dataRow);
+		Console.WriteLine("*** Error: Exception \"{0}\" ({1}) occurred while parsing file \"{2}\" within ParseOSMachineInfoDataTable for IpAddress: {3} ({4})",
+							e.Message,
+							e.GetType().Name,
+							filePath?.PathResolved,
+							ipAddress,
+							dcName);
 	}
 }
 
