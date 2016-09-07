@@ -38,7 +38,7 @@ const int CompactionFlagThresholdInMS = 10000; //Defines a threshold that will f
 const int SlowLogQueryThresholdInMS = 2000;
 static TimeSpan LogTimeSpanRange = new TimeSpan(2, 0, 0, 0); //Only import log entries for the past timespan (e.g., the last 5 days) based on LogCurrentDate.
 static DateTime LogCurrentDate = DateTime.MinValue; //DateTime.Now.Date; //If DateTime.MinValue all log entries are parsed
-static int LogMaxRowsPerNode = -1; // -1 disabled
+static int LogMaxRowsPerNode = -1; // -1 disabled //If enabled only the current log file is read (no arhieves).
 static string[] LogSummaryIndicatorType = new string[] { "WARN", "ERROR" };
 static string[] LogSummaryTaskItems = new string[] { "SliceQueryFilter.java", "BatchStatement.java", "CompactionController.java", "HintedHandoffMetrics.java", "GCInspector.java", "MessagingService.java", "CompactionTask.java", "RepairSession.java", "SSTableWriter.java", "CqlSlowLogWriter.java"};
 static string[] LogSummaryIgnoreTaskExceptions = new string[] { };
@@ -97,12 +97,15 @@ void Main()
 	//var diagnosticPath = @"[MyDocuments]\LINQPad Queries\DataStax\TestData\gamingactivity-diagnostics-2016_08_10_08_45_40_UTC";
 	//var diagnosticPath = @"[MyDocuments]\LINQPad Queries\DataStax\TestData\production_group_v_1-diagnostics-2016_07_04_15_43_48_UTC"; 
 	//var diagnosticPath = @"[MyDocuments]\LINQPad Queries\DataStax\TestData\na1_v_prd_green-diagnostics-2016_08_30_19_08_03_UTC";
-	//var diagnosticPath = @"[MyDocuments]\LINQPad Queries\DataStax\TestData\cengage";
-	var diagnosticPath = @"[MyDocuments]\LINQPad Queries\DataStax\TestData\CapOne";
+	var diagnosticPath = @"[MyDocuments]\LINQPad Queries\DataStax\TestData\cengage";
+	//var diagnosticPath = @"[MyDocuments]\LINQPad Queries\DataStax\TestData\CapOne";
 	//@"C:\Users\richard\Desktop\datastax"; 
 	var diagnosticNoSubFolders = false; //<==== Should be Updated 
 	var parseLogs = true;
-	var parseNonLogs = true;
+	var parseNonLogs = true; 
+	var parseArchivedLogs = true; //Only valid when diagnosticNoSubFolders is false and LogMaxRowsPerNode <= 0 (disabled)
+	string alternativeLogFilePath = null; //Additional file path that is used to parse log files where the IP address must be in the beginning or end of the file name. This wild cards can be included. 
+	string alternativeDDLFilePath = null; //A file path which supports wild card patterns to parse CQL/DDL
 	
 	//Excel Worksheet names
 	var excelWorkSheetRingInfo = "Node Information";
@@ -135,6 +138,7 @@ void Main()
 	var nodetoolCompactionHistFile = "compactionhistory";
 	var logCassandraDirSystemLog = @".\cassandra\system.log";
 	var logCassandraSystemLogFile = "system";
+	var logCassandraSystemLogFileArchive = "system.log.*"; //system-*.log
 	var confCassandraDir = @".\conf\cassandra";
 	var confCassandraFile = "cassandra.yaml";
 	var confCassandraType = "cassandra";
@@ -599,13 +603,53 @@ void Main()
 						DateTime maxLogTimestamp;
 
 						dtLogsStack.Push(dtLog);
-						ReadCassandraLogParseIntoDataTable(logFilePath, ipAddress, dcName, includeLogEntriesAfterThisTimeFrame, LogMaxRowsPerNode, dtLog, out maxLogTimestamp);
+						ReadCassandraLogParseIntoDataTable(logFilePath,
+															ipAddress,
+															dcName,
+															includeLogEntriesAfterThisTimeFrame,
+															LogMaxRowsPerNode,
+															dtLog,
+															out maxLogTimestamp);
 
 						lock (maxminMaxLogDate)
 						{
 							maxminMaxLogDate.SetMinMax(maxLogTimestamp);
 						}
 
+						if (LogMaxRowsPerNode <= 0
+								&& !string.IsNullOrEmpty(logCassandraSystemLogFileArchive)
+								&& parseArchivedLogs)
+						{
+							IFilePath archiveFilePath;
+							DateTime archMaxLogTimestamp;
+							
+							if (element.Clone().AddChild(logsDir).MakeFile(logCassandraSystemLogFileArchive, out archiveFilePath))
+							{
+								foreach (IFilePath archiveElement in archiveFilePath.GetWildCardMatches())
+								{
+									Console.WriteLine("Processing File \"{0}\"", archiveElement.Path);
+									
+									ReadCassandraLogParseIntoDataTable(logFilePath,
+																		ipAddress,
+																		dcName,
+																		includeLogEntriesAfterThisTimeFrame,
+																		LogMaxRowsPerNode,
+																		dtLog,
+																		out archMaxLogTimestamp);
+
+									lock (maxminMaxLogDate)
+									{
+										maxminMaxLogDate.SetMinMax(archMaxLogTimestamp);
+									}
+
+									if (archMaxLogTimestamp > maxLogTimestamp)
+									{
+										maxLogTimestamp = archMaxLogTimestamp;
+									}
+								}
+							}
+						}
+						
 						if (parseNonLogs && ((LogSummaryPeriods != null && LogSummaryPeriods.Length > 0)
 													|| (LogSummaryPeriodRanges != null && LogSummaryPeriodRanges.Length > 0)))
 						{
@@ -2111,7 +2155,7 @@ void ReadTPStatsFileParseIntoDataTable(IFilePath tpstatsFilePath,
 static Common.DateTimeRange LogCassandraMaxMinTimestamp = new Common.DateTimeRange();
 static Common.Patterns.Collections.ThreadSafe.Dictionary<string,List<Common.DateTimeRange>> LogCassandraNodeMaxMinTimestamps = new Common.Patterns.Collections.ThreadSafe.Dictionary<string,List<Common.DateTimeRange>>();
 
-void ReadCassandraLogParseIntoDataTable(IFilePath clogFilePath,
+int ReadCassandraLogParseIntoDataTable(IFilePath clogFilePath,
 										string ipAddress,
 										string dcName,
 										DateTime onlyEntriesAfterThisTimeFrame,
@@ -2149,14 +2193,10 @@ void ReadCassandraLogParseIntoDataTable(IFilePath clogFilePath,
 	int skipLines = -1;
 	string tableItem = null;
 	int tableItemPos = -1;
+	int nbrRows = 0;
 	//int tableItemValuePos = -1;
 
 	maxTimestamp = DateTime.MinValue;
-
-	if (maxRowWrite <= 0)
-	{
-		maxRowWrite = int.MaxValue;
-	}
 
 	for (int nLine = 0; nLine < fileLines.Length; ++nLine)
 	{
@@ -2297,7 +2337,7 @@ void ReadCassandraLogParseIntoDataTable(IFilePath clogFilePath,
 			continue;
 		}
 
-		#region Timestamp Parsing
+		#region Timestamp/Number of lines Parsing
 		if (DateTime.TryParse(parsedValues[2] + ' ' + parsedValues[3].Replace(',', '.'), out lineDateTime))
 		{
 			if (lineDateTime < onlyEntriesAfterThisTimeFrame)
@@ -2305,21 +2345,17 @@ void ReadCassandraLogParseIntoDataTable(IFilePath clogFilePath,
 				continue;
 			}
 
-			if (skipLines < 0)
+			if (maxRowWrite > 0 && maxRowWrite < int.MaxValue)
 			{
-				if (maxRowWrite > 0)
+				if (skipLines < 0)
 				{
 					skipLines = fileLines.Length - nLine - maxRowWrite;
 				}
-				else
-				{
-					skipLines = 1;
-				}
-			}
 
-			if (--skipLines > 0)
-			{
-				continue;
+				if (--skipLines > 0)
+				{
+					continue;
+				}
 			}
 		}
 		else
@@ -2836,7 +2872,7 @@ void ReadCassandraLogParseIntoDataTable(IFilePath clogFilePath,
 		#endregion
 
 		dtCLog.Rows.Add(dataRow);
-
+		++nbrRows;
 		lastRow = dataRow;
 
 	}
@@ -2855,6 +2891,8 @@ void ReadCassandraLogParseIntoDataTable(IFilePath clogFilePath,
 														strAddress => new List<Common.DateTimeRange>() { new Common.DateTimeRange(minmaxDate.Max, minmaxDate.Min) },
 														(strAddress, dtRanges) => { dtRanges.Add(minmaxDate); return dtRanges; });
 	}
+	
+	return nbrRows;
 }
 
 
