@@ -96,11 +96,15 @@ void Main()
 	//		e.g., cfstats_10.192.40.7, system-10.192.40.7.log, 10.192.40.7_system.log, etc.
 	//var diagnosticPath = @"[MyDocuments]\LINQPad Queries\DataStax\TestData\gamingactivity-diagnostics-2016_08_10_08_45_40_UTC";
 	//var diagnosticPath = @"[MyDocuments]\LINQPad Queries\DataStax\TestData\production_group_v_1-diagnostics-2016_07_04_15_43_48_UTC"; 
-	//var diagnosticPath = @"[MyDocuments]\LINQPad Queries\DataStax\TestData\na1_v_prd_green-diagnostics-2016_08_30_19_08_03_UTC";
-	var diagnosticPath = @"[MyDocuments]\LINQPad Queries\DataStax\TestData\cengage";
+	//var diagnosticPath = @"[MyDocuments]\LINQPad Queries\DataStax\TestData\na1_v_prd_green-diagnostics-2016_08_19_20_22_55_UTC";
+	var diagnosticPath = @"[MyDocuments]\LINQPad Queries\DataStax\TestData\na1_v_prd_green-diagnostics-2016_08_30_19_08_03_UTC";
+	//var diagnosticPath = @"[MyDocuments]\LINQPad Queries\DataStax\TestData\cengage";
 	//var diagnosticPath = @"[MyDocuments]\LINQPad Queries\DataStax\TestData\CapOne";
 	//@"C:\Users\richard\Desktop\datastax"; 
 	var diagnosticNoSubFolders = false; //<==== Should be Updated 
+	
+	if(diagnosticNoSubFolders) LogMaxRowsPerNode = -1;
+	
 	var parseLogs = true;
 	var parseNonLogs = true; 
 	var parseArchivedLogs = true; //Only valid when diagnosticNoSubFolders is false and LogMaxRowsPerNode <= 0 (disabled)
@@ -147,8 +151,6 @@ void Main()
 	var confDSEYamlType = "dse yaml";
 	var confDSEType = "dse";
 	var confDSEFile = "dse";
-	var confCassandraYamlFileName = "cassandra";
-	var confDSEFileName = "dse";
 	var cqlDDLDirFile = @".\cqlsh\describe_schema";
 	var cqlDDLDirFileExt = @"*.cql";
 	//var nodetoolCFHistogramsFile = "cfhistograms"; //this is based on keyspace and table and not sure of the format. HC doc has it as cfhistograms_keyspace_table.txt
@@ -204,8 +206,6 @@ void Main()
 
 	var diagPath = Common.Path.PathUtils.BuildDirectoryPath(diagnosticPath);
 	var logParsingTasks = new Common.Patterns.Collections.ThreadSafe.List<Task>();
-	var logSummaryParsingTasks = new Common.Patterns.Collections.ThreadSafe.List<Task>();
-	var logStatusParsingTasks = new Common.Patterns.Collections.ThreadSafe.List<Task>();
 	var kstblNames = new List<CKeySpaceTableNames>();
 
 	if (diagnosticNoSubFolders)
@@ -241,7 +241,7 @@ void Main()
 
 		IFilePath cqlFilePath;
 
-		if (parseNonLogs && diagPath.Clone().MakeFile(cqlDDLDirFileExt, out cqlFilePath))
+		if (parseNonLogs && diagPath.MakeFile(cqlDDLDirFileExt, out cqlFilePath))
 		{
 			foreach (IFilePath element in cqlFilePath.GetWildCardMatches())
 			{
@@ -264,13 +264,52 @@ void Main()
 
 				element.MakeEmpty();
 			}
+		}
 
-			if (kstblNames.Count == 0)
+		#region alternative file paths (DDL)
+
+		if (!string.IsNullOrEmpty(alternativeDDLFilePath))
+        {
+			var alterPath = Common.Path.PathUtils.BuildPath(alternativeDDLFilePath);
+			List<IFilePath> alterFiles = null;
+
+			if (alterPath.HasWildCardPattern())
 			{
-				Console.WriteLine("*** Warning: DDL was not found which can cause missing information in the Excel workbooks.");
+				alterFiles = alterPath.GetWildCardMatches().Where(p => p.IsFilePath).Cast<IFilePath>().ToList();
+			}
+			else if (alterPath.IsDirectoryPath)
+			{
+				alterFiles = ((IDirectoryPath) alterPath).Children().Where(p => p.IsFilePath).Cast<IFilePath>().ToList();
+			}
+			else
+			{
+				alterFiles = new List<IFilePath>() { (IFilePath) alterPath };
+			}
+
+			foreach (IFilePath element in alterFiles)
+			{
+				Console.WriteLine("Processing File \"{0}\"", element.Path);
+				ReadCQLDDLParseIntoDataTable(element,
+												null,
+												null,
+												dtKeySpace,
+												dtTable,
+												cqlHashCheck,
+												ignoreKeySpaces);
+
+				foreach (DataRow dataRow in dtTable.Rows)
+				{
+					if (!kstblNames.Exists(item => item.KeySpaceName == (dataRow["Keyspace Name"] as string) && item.TableName == (dataRow["Name"] as string)))
+					{
+						kstblNames.Add(new CKeySpaceTableNames(dataRow));
+					}
+				}
+
+				element.MakeEmpty();
 			}
 		}
 
+		#endregion
 
 		Parallel.ForEach(diagChildren, (diagFile) =>
 		//foreach (var diagFile in diagChildren)
@@ -286,19 +325,26 @@ void Main()
 					{
 						if (parseNonLogs && string.IsNullOrEmpty(dcName))
 						{
-							Console.WriteLine("*** Warning: A DataCenter Name was not found for path \"{0}\" in the assocated IP Address in the Ring File.", diagFile.Path);
+							diagFile.Path.Dump("Warning: A DataCenter Name was not found in the assocated IP Address in the Ring File.");
 						}
 						
 				    	Console.WriteLine("Processing File \"{0}\"", diagFile.Path);
 						var dtCFStats = new System.Data.DataTable(excelWorkSheetCFStats + "-" + ipAddress);
 						dtCFStatsStack.Push(dtCFStats);
 						ReadCFStatsFileParseIntoDataTable((IFilePath)diagFile, ipAddress, dcName, dtCFStats, ignoreKeySpaces, cfstatsCreateMBColumns);
+
+						if (kstblNames.Count == 0)
+						{
+							//We need to have a list of valid Keyspaces and Tables...
+							diagFile.Path.Dump("Warning: DDL was not found, parsing a TPStats file to obtain data model information");
+							ReadCFStatsFileForKeyspaceTableInfo((IFilePath)diagFile, ignoreKeySpaces, kstblNames);
+						}
 					}
 					else if (parseNonLogs && diagFile.Name.Contains(nodetoolTPStatsFile))
 					{
 						if (string.IsNullOrEmpty(dcName))
 						{
-							Console.WriteLine("*** Warning: A DataCenter Name was not found for path \"{0}\" in the assocated IP Address in the Ring File.", diagFile.Path);
+							diagFile.Path.Dump("Warning: A DataCenter Name was not found in the assocated IP Address in the Ring File.");
 						}
 						
 						Console.WriteLine("Processing File \"{0}\"", diagFile.Path);
@@ -310,7 +356,7 @@ void Main()
 					{
 						if (string.IsNullOrEmpty(dcName))
 						{
-							Console.WriteLine("*** Warning: A DataCenter Name was not found for path \"{0}\" in the assocated IP Address in the Ring File.", diagFile.Path);
+							diagFile.Path.Dump("Warning: A DataCenter Name was not found in the assocated IP Address in the Ring File.");
 						}
 						
 						Console.WriteLine("Processing File \"{0}\"", diagFile.Path);
@@ -320,7 +366,7 @@ void Main()
 					{
 						if (string.IsNullOrEmpty(dcName))
 						{
-							Console.WriteLine("*** Warning: A DataCenter Name was not found for path \"{0}\" in the assocated IP Address in the Ring File.", diagFile.Path);
+							diagFile.Path.Dump("Warning: A DataCenter Name was not found in the assocated IP Address in the Ring File.");
 						}
 						
 						Console.WriteLine("Processing File \"{0}\"", diagFile.Path);
@@ -332,123 +378,104 @@ void Main()
 					{
 						if (string.IsNullOrEmpty(dcName))
 						{
-							Console.WriteLine("*** Warning: A DataCenter Name was not found for path \"{0}\" in the assocated IP Address in the Ring File.", diagFile.Path);
+							diagFile.Path.Dump("Warning: A DataCenter Name was not found in the assocated IP Address in the Ring File.");
 						}
 						
-						Console.WriteLine("Processing File \"{0}\"", diagFile.Path);
-						var dtLog = new System.Data.DataTable(excelWorkSheetLogCassandra + "-" + ipAddress);
-						DateTime maxLogTimestamp;
-						
-						dtLogsStack.Push(dtLog);
-						ReadCassandraLogParseIntoDataTable((IFilePath)diagFile, ipAddress, dcName, includeLogEntriesAfterThisTimeFrame, LogMaxRowsPerNode, dtLog, out maxLogTimestamp);
-
-						lock (maxminMaxLogDate)
-						{
-							maxminMaxLogDate.SetMinMax(maxLogTimestamp);
-						}
-						
-						if (parseNonLogs && ((LogSummaryPeriods != null && LogSummaryPeriods.Length > 0)
-												|| (LogSummaryPeriodRanges != null && LogSummaryPeriodRanges.Length > 0)))
-						{
-							var summaryTask = Task.Run(() =>
-							{
-								var dtSummaryLog = new System.Data.DataTable(excelWorkSheetLogCassandra + "-" + ipAddress);
-								bool useMaxTimestamp = LogSummaryPeriods == null || LogSummaryPeriods.Length == 0;
-								var summaryPeriods = useMaxTimestamp ? new Tuple<DateTime, TimeSpan>[LogSummaryPeriodRanges.Length] : LogSummaryPeriods;
-
-								if (useMaxTimestamp)
-								{
-									var currentRange = maxLogTimestamp.Date.AddDays(1);
-
-									for (int nIndex = 0; nIndex < summaryPeriods.Length; ++nIndex)
-									{
-										summaryPeriods[nIndex] = new Tuple<DateTime, TimeSpan>(currentRange,
-																								LogSummaryPeriodRanges[nIndex].Item2);
-
-										currentRange = currentRange - LogSummaryPeriodRanges[nIndex].Item1;
-									}
-								}
-
-								dtLogSummaryStack.Push(dtSummaryLog);
-								Console.WriteLine("Summary Log Processing File \"{0}\"", diagFile.Path);
-								ParseCassandraLogIntoSummaryDataTable(dtLog,
-																		dtSummaryLog,
-																		ipAddress,
-																		dcName,
-																		LogSummaryIndicatorType,
-																		LogSummaryTaskItems,
-																		LogSummaryIgnoreTaskExceptions,
-																		summaryPeriods);
-							});
-							logSummaryParsingTasks.Add(summaryTask);
-						}
-
-						var statusTask = Task.Run(() =>
-						{
-							var dtStatusLog = new System.Data.DataTable(excelWorkSheetStatusLogCassandra + "-" + ipAddress);
-							var dtCFStats = parseNonLogs ? new DataTable("CFStats-Comp" + "-" + ipAddress) : null;
-							var dtTPStats = parseNonLogs ? new DataTable("CFStats-GC" + "-" + ipAddress) : null;
-							
-							dtLogStatusStack.Push(dtStatusLog);
-							dtCFStatsStack.Push(dtCFStats);
-							dtTPStatsStack.Push(dtTPStats);
-							
-							Console.WriteLine("Status Log Processing File \"{0}\"", diagFile.Path);
-							ParseCassandraLogIntoStatusLogDataTable(dtLog,
-																	dtStatusLog,
-																	dtCFStats,
-																	dtTPStats,
-																	nodeGCInfo,
-																	ipAddress,
+						logParsingTasks.Add(ProcessLogFileTasks((IFilePath) diagFile,
+																	excelWorkSheetLogCassandra,
 																	dcName,
+																	ipAddress,
+																	includeLogEntriesAfterThisTimeFrame,
+																	maxminMaxLogDate,
+																	-1,
+																	dtLogsStack,
+																	null,
+																	parseNonLogs,
+																	excelWorkSheetStatusLogCassandra,
+																	nodeGCInfo,
 																	ignoreKeySpaces,
-																	kstblNames);
-						});
-						logStatusParsingTasks.Add(statusTask);
-					}
-					else if (parseNonLogs && diagFile.Name.Contains(confCassandraYamlFileName))
-					{
-						if (string.IsNullOrEmpty(dcName))
-						{
-							Console.WriteLine("*** Warning: A DataCenter Name was not found for path \"{0}\" in the assocated IP Address in the Ring File.", diagFile.Path);
-						}
-						
-						Console.WriteLine("Processing File \"{0}\"", diagFile.Path);
-						var yamlList = new List<YamlInfo>();
-						listCYamlStack.Push(yamlList);
-						ReadYamlFileParseIntoList((IFilePath)diagFile, ipAddress, dcName, confCassandraType, yamlList);
-					}
-					else if (parseNonLogs && diagFile.Name.Contains(confDSEFileName))
-					{
-						if (string.IsNullOrEmpty(dcName))
-						{
-							Console.WriteLine("*** Warning: A DataCenter Name was not found for path \"{0}\" in the assocated IP Address in the Ring File.", diagFile.Path);
-						}
-						
-						Console.WriteLine("Processing File \"{0}\"", diagFile.Path);
-						var yamlList = new List<YamlInfo>();
-						listCYamlStack.Push(yamlList);
-						ReadYamlFileParseIntoList((IFilePath)diagFile, 
-													ipAddress,
-													dcName,
-													((IFilePath)diagFile).FileExtension == ".yaml" ? confDSEYamlType : confDSEType,
-													yamlList);
+																	kstblNames,
+																	dtLogSummaryStack,
+																	dtLogStatusStack,
+																	dtCFStatsStack,
+																	dtTPStatsStack));
 					}
 				}
-				else if(((IFilePath)diagFile).FileExtension.ToLower() != ".cql")
+				else if (((IFilePath)diagFile).FileExtension.ToLower() != ".cql")
 				{
-					Console.WriteLine("*** Error: File \"{0}\" was Skipped", diagFile.Path);
+					diagFile.Path.Dump("*** Error: File was Skipped");
 				}
 			}
 		});
-		
+
+		#region alternative file paths (Logs)
+
+		if (!string.IsNullOrEmpty(alternativeLogFilePath))
+        {
+			var alterPath = Common.Path.PathUtils.BuildPath(alternativeDDLFilePath);
+			List<IFilePath> alterFiles = null;
+
+			if (alterPath.HasWildCardPattern())
+			{
+				alterFiles = alterPath.GetWildCardMatches().Where(p => p.IsFilePath).Cast<IFilePath>().ToList();
+			}
+			else if (alterPath.IsDirectoryPath)
+			{
+				alterFiles = ((IDirectoryPath)alterPath).Children().Where(p => p.IsFilePath).Cast<IFilePath>().ToList();
+			}
+			else
+			{
+				alterFiles = new List<IFilePath>() { (IFilePath)alterPath };
+			}
+
+			foreach (IFilePath element in alterFiles)
+			{
+				string ipAddress;
+				string dcName;
+
+				if (DetermineIPDCFromFileName(element.FileName, dtRingInfo, out ipAddress, out dcName))
+				{
+					if (string.IsNullOrEmpty(dcName))
+					{
+						element.Path.Dump("Warning: A DataCenter Name was not found in the assocated IP Address in the Ring File.");
+					}
+
+					logParsingTasks.Add(ProcessLogFileTasks(element,
+																excelWorkSheetLogCassandra,
+																dcName,
+																ipAddress,
+																includeLogEntriesAfterThisTimeFrame,
+																maxminMaxLogDate,
+																-1,
+																dtLogsStack,
+																null,
+																parseNonLogs,
+																excelWorkSheetStatusLogCassandra,
+																nodeGCInfo,
+																ignoreKeySpaces,
+																kstblNames,
+																dtLogSummaryStack,
+																dtLogStatusStack,
+																dtCFStatsStack,
+																dtTPStatsStack));
+				}
+			}
+		}
+
+		#endregion
+
+		if (kstblNames.Count == 0)
+		{
+			kstblNames.Dump("Warning: DDL was not found which can cause missing information in the Excel workbooks.");
+		}
+
 		#endregion
 	}
 	else
 	{
 		#region Parse -- Files located in separate folders
-		
-		var diagNodePath = diagPath.Clone().AddChild(diagNodeDir) as Common.IDirectoryPath;
+
+		var diagNodePath = diagPath.MakeChild(diagNodeDir) as Common.IDirectoryPath;
 		List<Common.IDirectoryPath> nodeDirs = null;
 
 		if (diagNodePath != null && (opsCtrDiag = diagNodePath.Exist()))
@@ -459,10 +486,10 @@ void Main()
 		{
 			nodeDirs = diagPath.Children().Cast<Common.IDirectoryPath>().ToList();
 		}
-
+		
 		IFilePath filePath = null;
 
-		if (parseNonLogs && nodeDirs.First().Clone().AddChild(nodetoolDir).MakeFile(nodetoolRingFile, out filePath))
+		if (parseNonLogs && nodeDirs.First().MakeChild(nodetoolDir).MakeFile(nodetoolRingFile, out filePath))
 		{
 			if (filePath.Exist())
 			{
@@ -471,7 +498,7 @@ void Main()
 			}
 		}
 
-		if (parseNonLogs && nodeDirs.First().Clone().AddChild(dseToolDir).MakeFile(dsetoolRingFile, out filePath))
+		if (parseNonLogs && nodeDirs.First().MakeChild(dseToolDir).MakeFile(dsetoolRingFile, out filePath))
 		{
 			if (filePath.Exist())
 			{
@@ -480,7 +507,7 @@ void Main()
 			}
 		}
 
-		if (parseNonLogs && nodeDirs.First().Clone().MakeFile(cqlDDLDirFile, out filePath))
+		if (parseNonLogs && nodeDirs.First().MakeFile(cqlDDLDirFile, out filePath))
 		{
 			if (filePath.Exist())
 			{
@@ -500,26 +527,123 @@ void Main()
 						kstblNames.Add(new CKeySpaceTableNames(dataRow));
 					}
 				}
+			}
+		}
 
-				if (kstblNames.Count == 0)
+		#region alternative file paths
+
+		if (!string.IsNullOrEmpty(alternativeDDLFilePath))
+        {
+			var alterPath = Common.Path.PathUtils.BuildPath(alternativeDDLFilePath);
+			List<IFilePath> alterFiles = null;
+
+			if (alterPath.HasWildCardPattern())
+			{
+				alterFiles = alterPath.GetWildCardMatches().Where(p => p.IsFilePath).Cast<IFilePath>().ToList();
+			}
+			else if (alterPath.IsDirectoryPath)
+			{
+				alterFiles = ((IDirectoryPath)alterPath).Children().Where(p => p.IsFilePath).Cast<IFilePath>().ToList();
+			}
+			else
+			{
+				alterFiles = new List<IFilePath>() { (IFilePath)alterPath };
+			}
+
+			foreach (IFilePath element in alterFiles)
+			{
+				Console.WriteLine("Processing File \"{0}\"", element.Path);
+				ReadCQLDDLParseIntoDataTable(element,
+												null,
+												null,
+												dtKeySpace,
+												dtTable,
+												cqlHashCheck,
+												ignoreKeySpaces);
+
+				foreach (DataRow dataRow in dtTable.Rows)
 				{
-					//We need to have a list of valid Keyspaces and Tables...
-					if (nodeDirs.First().Clone().AddChild(nodetoolDir).MakeFile(nodetoolCFStatsFile, out filePath))
+					if (!kstblNames.Exists(item => item.KeySpaceName == (dataRow["Keyspace Name"] as string) && item.TableName == (dataRow["Name"] as string)))
 					{
-						if (filePath.Exist())
-						{
-							Console.WriteLine("Warning: DDL was not found, parsing a TPStats file to obtain data model information from \"{0}\"", filePath.Path);
-							ReadCFStatsFileForKeyspaceTableInfo(filePath, ignoreKeySpaces, kstblNames);
-						}
+						kstblNames.Add(new CKeySpaceTableNames(dataRow));
 					}
 				}
 
-				if (kstblNames.Count == 0)
+				element.MakeEmpty();
+			}
+		}
+
+		if (kstblNames.Count == 0)
+		{
+			//We need to have a list of valid Keyspaces and Tables...
+			if (nodeDirs.First().Clone().AddChild(nodetoolDir).MakeFile(nodetoolCFStatsFile, out filePath))
+			{
+				if (filePath.Exist())
 				{
-					Console.WriteLine("*** Warning: DDL was not found which can cause missing information in the Excel workbooks.");
+					filePath.Path.Dump("Warning: DDL was not found, parsing a TPStats file to obtain data model information");
+					ReadCFStatsFileForKeyspaceTableInfo(filePath, ignoreKeySpaces, kstblNames);
 				}
 			}
 		}
+
+		if (kstblNames.Count == 0)
+		{
+			kstblNames.Dump("Warning: DDL was not found which can cause missing information in the Excel workbooks.");
+		}
+
+		if (!string.IsNullOrEmpty(alternativeLogFilePath))
+        {
+			var alterPath = Common.Path.PathUtils.BuildPath(alternativeDDLFilePath);
+			List<IFilePath> alterFiles = null;
+
+			if (alterPath.HasWildCardPattern())
+			{
+				alterFiles = alterPath.GetWildCardMatches().Where(p => p.IsFilePath).Cast<IFilePath>().ToList();
+			}
+			else if (alterPath.IsDirectoryPath)
+			{
+				alterFiles = ((IDirectoryPath)alterPath).Children().Where(p => p.IsFilePath).Cast<IFilePath>().ToList();
+			}
+			else
+			{
+				alterFiles = new List<IFilePath>() { (IFilePath)alterPath };
+			}
+
+			foreach (IFilePath element in alterFiles)
+			{
+				string ipAddress;
+				string dcName;
+
+				if (DetermineIPDCFromFileName(element.FileName, dtRingInfo, out ipAddress, out dcName))
+				{
+					if (string.IsNullOrEmpty(dcName))
+					{
+						element.Path.Dump("Warning: A DataCenter Name was not found in the assocated IP Address in the Ring File.");
+					}
+
+					logParsingTasks.Add(ProcessLogFileTasks(element,
+																excelWorkSheetLogCassandra,
+																dcName,
+																ipAddress,
+																includeLogEntriesAfterThisTimeFrame,
+																maxminMaxLogDate,
+																-1,
+																dtLogsStack,
+																null,
+																parseNonLogs,
+																excelWorkSheetStatusLogCassandra,
+																nodeGCInfo,
+																ignoreKeySpaces,
+																kstblNames,
+																dtLogSummaryStack,
+																dtLogStatusStack,
+																dtCFStatsStack,
+																dtTPStatsStack));
+				}
+			}
+		}
+
+		#endregion
 
 		Parallel.ForEach(nodeDirs, (element) =>
 		//foreach (var element in nodeDirs)
@@ -532,7 +656,7 @@ void Main()
 
 			if (parseNonLogs && string.IsNullOrEmpty(dcName))
 			{
-				Console.WriteLine("Warning: DataCenter Name was not found for Path \"{0}\" in the Ring file.", element.Path);
+				element.Path.Dump("Warning: DataCenter Name was not found in the Ring file.");
 			}
 
 			if (parseNonLogs)
@@ -548,7 +672,7 @@ void Main()
 											dtOSMachineInfo);
 			}
 
-			if (parseNonLogs && element.Clone().AddChild(nodetoolDir).MakeFile(nodetoolCFStatsFile, out diagFilePath))
+			if (parseNonLogs && element.MakeChild(nodetoolDir).MakeFile(nodetoolCFStatsFile, out diagFilePath))
 			{
 				if (diagFilePath.Exist())
 				{
@@ -559,7 +683,7 @@ void Main()
 				}
 			}
 
-			if (parseNonLogs && element.Clone().AddChild(nodetoolDir).MakeFile(nodetoolTPStatsFile, out diagFilePath))
+			if (parseNonLogs && element.MakeChild(nodetoolDir).MakeFile(nodetoolTPStatsFile, out diagFilePath))
 			{
 				if (diagFilePath.Exist())
 				{
@@ -570,7 +694,7 @@ void Main()
 				}
 			}
 
-			if (parseNonLogs && element.Clone().AddChild(nodetoolDir).MakeFile(nodetoolInfoFile, out diagFilePath))
+			if (parseNonLogs && element.MakeChild(nodetoolDir).MakeFile(nodetoolInfoFile, out diagFilePath))
 			{
 				if (diagFilePath.Exist())
 				{
@@ -579,7 +703,7 @@ void Main()
 				}
 			}
 
-			if (parseNonLogs && element.Clone().AddChild(nodetoolDir).MakeFile(nodetoolCompactionHistFile, out diagFilePath))
+			if (parseNonLogs && element.MakeChild(nodetoolDir).MakeFile(nodetoolCompactionHistFile, out diagFilePath))
 			{
 				if (diagFilePath.Exist())
 				{
@@ -590,131 +714,39 @@ void Main()
 				}
 			}
 
-			if (parseLogs && element.Clone().AddChild(logsDir).MakeFile(logCassandraDirSystemLog, out diagFilePath))
+			if (parseLogs && element.MakeChild(logsDir).MakeFile(logCassandraDirSystemLog, out diagFilePath))
 			{
 				if (diagFilePath.Exist())
 				{
-					var logFilePath = (IFilePath) diagFilePath.Clone();
-					
-					var logTask = Task.Run(() =>
+					IFilePath archivedFilePath = null;
+
+					if (parseArchivedLogs)
 					{
-						Console.WriteLine("Processing File \"{0}\"", logFilePath.Path);
-						var dtLog = new System.Data.DataTable(excelWorkSheetLogCassandra + "-" + ipAddress);
-						DateTime maxLogTimestamp;
-
-						dtLogsStack.Push(dtLog);
-						ReadCassandraLogParseIntoDataTable(logFilePath,
-															ipAddress,
-															dcName,
-															includeLogEntriesAfterThisTimeFrame,
-															LogMaxRowsPerNode,
-															dtLog,
-															out maxLogTimestamp);
-
-						lock (maxminMaxLogDate)
-						{
-							maxminMaxLogDate.SetMinMax(maxLogTimestamp);
-						}
-
-						if (LogMaxRowsPerNode <= 0
-								&& !string.IsNullOrEmpty(logCassandraSystemLogFileArchive)
-								&& parseArchivedLogs)
-						{
-							IFilePath archiveFilePath;
-							DateTime archMaxLogTimestamp;
-							
-							if (element.Clone().AddChild(logsDir).MakeFile(logCassandraSystemLogFileArchive, out archiveFilePath))
-							{
-								foreach (IFilePath archiveElement in archiveFilePath.GetWildCardMatches())
-								{
-									Console.WriteLine("Processing File \"{0}\"", archiveElement.Path);
-									
-									ReadCassandraLogParseIntoDataTable(logFilePath,
-																		ipAddress,
-																		dcName,
-																		includeLogEntriesAfterThisTimeFrame,
-																		LogMaxRowsPerNode,
-																		dtLog,
-																		out archMaxLogTimestamp);
-
-									lock (maxminMaxLogDate)
-									{
-										maxminMaxLogDate.SetMinMax(archMaxLogTimestamp);
-									}
-
-									if (archMaxLogTimestamp > maxLogTimestamp)
-									{
-										maxLogTimestamp = archMaxLogTimestamp;
-									}
-								}
-							}
-						}
-						
-						if (parseNonLogs && ((LogSummaryPeriods != null && LogSummaryPeriods.Length > 0)
-													|| (LogSummaryPeriodRanges != null && LogSummaryPeriodRanges.Length > 0)))
-						{
-							var summaryTask = Task.Run(() =>
-							{
-								var dtSummaryLog = new System.Data.DataTable(excelWorkSheetLogCassandra + "-" + ipAddress);
-								bool useMaxTimestamp = LogSummaryPeriods == null || LogSummaryPeriods.Length == 0;
-								var summaryPeriods = useMaxTimestamp ? new Tuple<DateTime, TimeSpan>[LogSummaryPeriodRanges.Length] : LogSummaryPeriods;
-
-								if (useMaxTimestamp)
-								{
-									var currentRange = maxLogTimestamp.Date.AddDays(1);
-
-									for (int nIndex = 0; nIndex < summaryPeriods.Length; ++nIndex)
-									{
-										summaryPeriods[nIndex] = new Tuple<DateTime, TimeSpan>(currentRange,
-																									LogSummaryPeriodRanges[nIndex].Item2);
-
-										currentRange = currentRange - LogSummaryPeriodRanges[nIndex].Item1;
-									}
-								}
-
-								dtLogSummaryStack.Push(dtSummaryLog);
-								Console.WriteLine("Summary Log Processing File \"{0}\"", logFilePath.Path);
-								ParseCassandraLogIntoSummaryDataTable(dtLog,
-																		dtSummaryLog,
-																		ipAddress,
-																		dcName,
-																		LogSummaryIndicatorType,
-																		LogSummaryTaskItems,
-																		LogSummaryIgnoreTaskExceptions,
-																		summaryPeriods);
-							});
-							logSummaryParsingTasks.Add(summaryTask);
-						}
-
-						var statusTask = Task.Run(() =>
-						{
-							var dtStatusLog = new System.Data.DataTable(excelWorkSheetStatusLogCassandra + "-" + ipAddress);
-							var dtCFStats = parseNonLogs ? new DataTable("CFStats-Comp" + "-" + ipAddress) : null;
-							var dtTPStats = parseNonLogs ? new DataTable("CFStats-GC" + "-" + ipAddress) : null;
-
-							dtLogStatusStack.Push(dtStatusLog);
-							dtCFStatsStack.Push(dtCFStats);
-							dtTPStatsStack.Push(dtTPStats);
-							
-							Console.WriteLine("Status Log Processing File \"{0}\"", logFilePath.Path);
-							ParseCassandraLogIntoStatusLogDataTable(dtLog,
-																	dtStatusLog,
-																	dtCFStats,
-																	dtTPStats,
-																	nodeGCInfo,
-																	ipAddress,
-																	dcName,
-																	ignoreKeySpaces,
-																	kstblNames);
-						});
-						logStatusParsingTasks.Add(statusTask);
-                    });
+						diagFilePath.ParentDirectoryPath.MakeFile(logCassandraSystemLogFileArchive, out archivedFilePath);
+					}
 					
-					logParsingTasks.Add(logTask);
+					logParsingTasks.Add( ProcessLogFileTasks(diagFilePath,
+																	excelWorkSheetLogCassandra,
+																	dcName,
+																	ipAddress,
+																	includeLogEntriesAfterThisTimeFrame,
+																	maxminMaxLogDate,
+																	LogMaxRowsPerNode,
+																	dtLogsStack,
+																	archivedFilePath,
+																	parseNonLogs,
+																	excelWorkSheetStatusLogCassandra,
+																	nodeGCInfo,
+																	ignoreKeySpaces,
+																	kstblNames,
+																	dtLogSummaryStack,
+																	dtLogStatusStack,
+																	dtCFStatsStack,
+																	dtTPStatsStack));
                 }
 			}
 
-			if (parseNonLogs && element.Clone().AddChild(confCassandraDir).MakeFile(confCassandraFile, out diagFilePath))
+			if (parseNonLogs && element.MakeChild(confCassandraDir).MakeFile(confCassandraFile, out diagFilePath))
 			{
 				if (diagFilePath.Exist())
 				{
@@ -725,7 +757,7 @@ void Main()
 				}
 			}
 
-			if (parseNonLogs && element.Clone().AddChild(confDSEDir).MakeFile(confDSEYamlFile, out diagFilePath))
+			if (parseNonLogs && element.MakeChild(confDSEDir).MakeFile(confDSEYamlFile, out diagFilePath))
 			{
 				if (diagFilePath.Exist())
 				{
@@ -736,7 +768,7 @@ void Main()
 				}
 			}
 
-			if (parseNonLogs && element.Clone().AddChild(confDSEDir).MakeFile(confDSEFile, out diagFilePath))
+			if (parseNonLogs && element.MakeChild(confDSEDir).MakeFile(confDSEFile, out diagFilePath))
 			{
 				if (diagFilePath.Exist())
 				{
@@ -752,9 +784,9 @@ void Main()
 		#endregion
 	}
 
-	var runYamlListIntoDT = Task.Run(() => ParseYamlListIntoDataTable(listCYamlStack, dtYaml));
-
-	var updateRingWYamlInfo = Task.Run(() =>
+	var runYamlListIntoDT = Task.Factory.StartNew(() => ParseYamlListIntoDataTable(listCYamlStack, dtYaml),
+													TaskCreationOptions.LongRunning);
+	var updateRingWYamlInfo = runYamlListIntoDT.ContinueWith(task =>
 		{
 			ParseOPSCenterInfoDataTable((IDirectoryPath)diagPath.Clone().AddChild(opsCenterDir),
 											opsCenterFiles,
@@ -764,11 +796,12 @@ void Main()
 			UpdateMachineInfo(dtOSMachineInfo,
 								nodeGCInfo);
 								
-			runYamlListIntoDT.Wait();
-			
 			UpdateRingInfo(dtRingInfo,
 							dtYaml);
-		});
+		},
+		TaskContinuationOptions.AttachedToParent
+			| TaskContinuationOptions.LongRunning
+			| TaskContinuationOptions.OnlyOnRanToCompletion);
 
 	#endregion
 
@@ -792,66 +825,16 @@ void Main()
 	#region Load Logs into Excel
 
 	//Cassandra Log (usually runs longer)
-	var runLogToExcel = Task.Run(() =>
-	{
-		#region Load Actual Logs into Excel
-		
-		if (LoadLogsIntoExcel && parseLogs)
-		{
-			//Need to wait until all logs are parsed...
-			logParsingTasks.ForEach(task => task.Wait());
-
-			DTLoadIntoDifferentExcelWorkBook(excelFilePath,
-											   excelWorkSheetLogCassandra,
-											   dtLogsStack,
-											   workSheet =>
-												   {												   		
-													   workSheet.Cells["1:2"].Style.Fill.PatternType = OfficeOpenXml.Style.ExcelFillStyle.LightGray;
-													   workSheet.Cells["1:2"].Style.HorizontalAlignment = OfficeOpenXml.Style.ExcelHorizontalAlignment.Center;
-
-													   workSheet.Cells["A1:M1"].Style.WrapText = true;
-													   workSheet.Cells["A1:M1"].Merge = true;
-												   	   workSheet.Cells["A1:M1"].Value = string.IsNullOrEmpty(LogExcelWorkbookFilter)
-																						   ? string.Format("Log Timestamp range is from \"{0}\" ({3}) to \"{1}\" ({4}) ({2:d\\ hh\\:mm}).",
-																											LogCassandraMaxMinTimestamp.Min,
-																											LogCassandraMaxMinTimestamp.Max,
-																											LogCassandraMaxMinTimestamp.Max - LogCassandraMaxMinTimestamp.Min,
-																											LogCassandraMaxMinTimestamp.Min.DayOfWeek,
-																											LogCassandraMaxMinTimestamp.Max.DayOfWeek)
-																							: LogExcelWorkbookFilter;
-													   workSheet.Cells["A1:M1"].Style.HorizontalAlignment = OfficeOpenXml.Style.ExcelHorizontalAlignment.Left;
-
-
-													   //workSheet.Cells["1:1"].Style.Fill.BackgroundColor.SetColor(System.Drawing.Color.LightGray);
-													   workSheet.View.FreezePanes(3, 1);
-
-													   workSheet.Cells["C:C"].Style.Numberformat.Format = "mm/dd/yyyy hh:mm:ss";
-
-													   workSheet.Cells["A2:J2"].AutoFilter = true;
-													   workSheet.Cells["A:F"].AutoFitColumns();
-													   workSheet.Cells["I:J"].AutoFitColumns();
-												   },
-												   MaxRowInExcelWorkBook,
-												   MaxRowInExcelWorkSheet,
-												   new Tuple<string,string,DataViewRowState>(LogExcelWorkbookFilter,
-												   												"[Data Center], [Timestamp] DESC",
-																								DataViewRowState.CurrentRows),
-													"A2");
-		}
-		
-		#endregion
-	});
-
-	var runStatusLogToExcel = Task.Run(() =>
+	var runLogParsingTask = Task<int>
+									.Factory
+									.ContinueWhenAll(logParsingTasks.ToArray(), tasks => tasks.Sum(t => ((Task<int>) t).Result));
+								
+	var runStatusLogToExcel = runLogParsingTask.ContinueWith(logTask =>
 	{
 		#region Load Status Logs into Excel
 		
 		if (LoadLogsIntoExcel && parseLogs)
 		{
-			//Need to wait until all logs are parsed...
-			logParsingTasks.ForEach(task => task.Wait());
-			logStatusParsingTasks.ForEach(task => task.Wait());
-
 			DTLoadIntoDifferentExcelWorkBook(excelFilePath,
 											   excelWorkSheetStatusLogCassandra,
 											   dtLogStatusStack,
@@ -932,12 +915,65 @@ void Main()
 																								DataViewRowState.CurrentRows),
 													"A2");
 		}
-	
+
 		#endregion
-	});
+	},
+	TaskContinuationOptions.AttachedToParent
+		| TaskContinuationOptions.LongRunning
+		| TaskContinuationOptions.OnlyOnRanToCompletion);
+
+	var runLogToExcel = runLogParsingTask.ContinueWith(logTask =>
+	{
+		#region Load Actual Logs into Excel
+
+		if (LoadLogsIntoExcel && parseLogs)
+		{
+			DTLoadIntoDifferentExcelWorkBook(excelFilePath,
+											   excelWorkSheetLogCassandra,
+											   dtLogsStack,
+											   workSheet =>
+												   {
+													   workSheet.Cells["1:2"].Style.Fill.PatternType = OfficeOpenXml.Style.ExcelFillStyle.LightGray;
+													   workSheet.Cells["1:2"].Style.HorizontalAlignment = OfficeOpenXml.Style.ExcelHorizontalAlignment.Center;
+
+													   workSheet.Cells["A1:M1"].Style.WrapText = true;
+													   workSheet.Cells["A1:M1"].Merge = true;
+													   workSheet.Cells["A1:M1"].Value = string.IsNullOrEmpty(LogExcelWorkbookFilter)
+																						? string.Format("Log Timestamp range is from \"{0}\" ({3}) to \"{1}\" ({4}) ({2:d\\ hh\\:mm}).",
+																										 LogCassandraMaxMinTimestamp.Min,
+																										 LogCassandraMaxMinTimestamp.Max,
+																										 LogCassandraMaxMinTimestamp.Max - LogCassandraMaxMinTimestamp.Min,
+																										 LogCassandraMaxMinTimestamp.Min.DayOfWeek,
+																										 LogCassandraMaxMinTimestamp.Max.DayOfWeek)
+																						 : LogExcelWorkbookFilter;
+													   workSheet.Cells["A1:M1"].Style.HorizontalAlignment = OfficeOpenXml.Style.ExcelHorizontalAlignment.Left;
+
+
+													   //workSheet.Cells["1:1"].Style.Fill.BackgroundColor.SetColor(System.Drawing.Color.LightGray);
+													   workSheet.View.FreezePanes(3, 1);
+
+													   workSheet.Cells["C:C"].Style.Numberformat.Format = "mm/dd/yyyy hh:mm:ss";
+
+													   workSheet.Cells["A2:J2"].AutoFilter = true;
+													   workSheet.Cells["A:F"].AutoFitColumns();
+													   workSheet.Cells["I:J"].AutoFitColumns();
+												   },
+												   MaxRowInExcelWorkBook,
+												   MaxRowInExcelWorkSheet,
+												   new Tuple<string, string, DataViewRowState>(LogExcelWorkbookFilter,
+												   												"[Data Center], [Timestamp] DESC",
+																								DataViewRowState.CurrentRows),
+													"A2");
+		}
+
+		#endregion
+	},
+	TaskContinuationOptions.AttachedToParent
+		| TaskContinuationOptions.LongRunning
+		| TaskContinuationOptions.OnlyOnRanToCompletion);
 
 	#endregion
-	
+
 	//Non-Logs
 	if (parseNonLogs)
 	{
@@ -1058,7 +1094,6 @@ void Main()
 				
 			#region Wait for yaml/config Tasks to Finish
 			
-			runYamlListIntoDT.Wait();
 			updateRingWYamlInfo.Wait();
 			
 			#region yaml/config
@@ -1201,8 +1236,7 @@ void Main()
 			
 			#region Wait for Logs to finish processing
 			//Need to wait until all logs are parsed...
-			logParsingTasks.ForEach(task => task.Wait());
-			logSummaryParsingTasks.ForEach(task => task.Wait());
+			runLogParsingTask.Wait();
 			
 			#region Summary Log
 			DTLoadIntoExcelWorkBook(excelPkg,
@@ -1243,9 +1277,6 @@ void Main()
 										"A2");
 			#endregion
 			
-			//Need to wait until all logs are parsed...							
-			logStatusParsingTasks.ForEach(task => task.Wait());
-
 			#region CFStats
 			DTLoadIntoExcelWorkBook(excelPkg,
 										excelWorkSheetCFStats,
@@ -1296,11 +1327,163 @@ void Main()
 		Console.WriteLine("*** Excel WorkBooks saved to \"{0}\"", excelFile.FullName);
 	}
 	
-	runLogToExcel.Wait();
 	runStatusLogToExcel.Wait();
+	runLogToExcel.Wait();
 	
 	#endregion
 }
+
+#region Read File Tasks
+
+Task<int> ProcessLogFileTasks(IFilePath logFilePath,
+							string excelWorkSheetLogCassandra,
+							string dcName,
+							string ipAddress,
+							DateTime includeLogEntriesAfterThisTimeFrame,
+							DateTimeRange maxminMaxLogDate,
+							int maxNbrLinesRead,
+							Common.Patterns.Collections.LockFree.Stack<DataTable> dtLogsStack,
+							IFilePath archiveFilePath, //null disables archive parsing
+							bool parseNonLogs,
+							string excelWorkSheetStatusLogCassandra,
+							Common.Patterns.Collections.ThreadSafe.Dictionary<string,string> nodeGCInfo,
+							List<string> ignoreKeySpaces,
+							List<CKeySpaceTableNames> kstblNames,
+							Common.Patterns.Collections.LockFree.Stack<DataTable> dtLogSummaryStack,
+                            Common.Patterns.Collections.LockFree.Stack<DataTable>  dtLogStatusStack,
+							Common.Patterns.Collections.LockFree.Stack<DataTable>  dtCFStatsStack,
+							Common.Patterns.Collections.LockFree.Stack<DataTable>  dtTPStatsStack)
+{
+	DateTime maxLogTimestamp = DateTime.MinValue;
+	var dtLog = new System.Data.DataTable(excelWorkSheetLogCassandra + "-" + ipAddress);
+	Task summaryTask = Task.FromResult<object>(null);
+	Task statusTask = Task.FromResult<object>(null);
+	Task<int> archTask = Task.FromResult(0);
+	
+    var logTask = Task.Factory.StartNew(() =>
+							{
+								Console.WriteLine("Processing File \"{0}\"", logFilePath.Path);
+
+								dtLogsStack.Push(dtLog);
+								var linesRead = ReadCassandraLogParseIntoDataTable(logFilePath,
+																					ipAddress,
+																					dcName,
+																					includeLogEntriesAfterThisTimeFrame,
+																					maxNbrLinesRead,
+																					dtLog,
+																					out maxLogTimestamp);
+
+								lock (maxminMaxLogDate)
+								{
+									maxminMaxLogDate.SetMinMax(maxLogTimestamp);
+								}
+								
+								return linesRead;
+							},
+						TaskCreationOptions.LongRunning);
+						
+	if (parseNonLogs 
+			&& ((LogSummaryPeriods != null && LogSummaryPeriods.Length > 0)
+					|| (LogSummaryPeriodRanges != null && LogSummaryPeriodRanges.Length > 0)))
+	{
+		summaryTask = logTask.ContinueWith(taskResult =>
+					   	{
+							var dtSummaryLog = new System.Data.DataTable(excelWorkSheetLogCassandra + "-" + ipAddress);
+							bool useMaxTimestamp = LogSummaryPeriods == null || LogSummaryPeriods.Length == 0;
+							var summaryPeriods = useMaxTimestamp ? new Tuple<DateTime, TimeSpan>[LogSummaryPeriodRanges.Length] : LogSummaryPeriods;
+				
+							if (useMaxTimestamp)
+							{
+								var currentRange = maxLogTimestamp.Date.AddDays(1);
+				
+								for (int nIndex = 0; nIndex < summaryPeriods.Length; ++nIndex)
+								{
+									summaryPeriods[nIndex] = new Tuple<DateTime, TimeSpan>(currentRange,
+																								LogSummaryPeriodRanges[nIndex].Item2);
+				
+									currentRange = currentRange - LogSummaryPeriodRanges[nIndex].Item1;
+								}
+							}
+				
+							dtLogSummaryStack.Push(dtSummaryLog);
+							Console.WriteLine("Summary Log Processing File \"{0}\"", logFilePath.Path);
+							ParseCassandraLogIntoSummaryDataTable(dtLog,
+																	dtSummaryLog,
+																	ipAddress,
+																	dcName,
+																	LogSummaryIndicatorType,
+																	LogSummaryTaskItems,
+																	LogSummaryIgnoreTaskExceptions,
+																	summaryPeriods);
+						},
+						TaskContinuationOptions.AttachedToParent
+							| TaskContinuationOptions.LongRunning
+							| TaskContinuationOptions.OnlyOnRanToCompletion);
+	}
+
+	statusTask = logTask.ContinueWith(taskResult =>
+					{
+						var dtStatusLog = new System.Data.DataTable(excelWorkSheetStatusLogCassandra + "-" + ipAddress);
+						var dtCFStats = parseNonLogs ? new DataTable("CFStats-Comp" + "-" + ipAddress) : null;
+						var dtTPStats = parseNonLogs ? new DataTable("CFStats-GC" + "-" + ipAddress) : null;
+			
+						dtLogStatusStack.Push(dtStatusLog);
+						dtCFStatsStack.Push(dtCFStats);
+						dtTPStatsStack.Push(dtTPStats);
+			
+						Console.WriteLine("Status Log Processing File \"{0}\"", logFilePath.Path);
+						ParseCassandraLogIntoStatusLogDataTable(dtLog,
+																dtStatusLog,
+																dtCFStats,
+																dtTPStats,
+																nodeGCInfo,
+																ipAddress,
+																dcName,
+																ignoreKeySpaces,
+																kstblNames);
+					},
+					TaskContinuationOptions.AttachedToParent
+						| TaskContinuationOptions.LongRunning
+						| TaskContinuationOptions.OnlyOnRanToCompletion);
+
+
+	if (maxNbrLinesRead <= 0
+				&& archiveFilePath != null)
+	{
+		foreach (IFilePath archiveElement in archiveFilePath.GetWildCardMatches())
+		{
+			if (archiveElement.PathResolved != logFilePath.PathResolved)
+			{
+				archTask = ProcessLogFileTasks(archiveElement,
+													excelWorkSheetLogCassandra,
+													dcName,
+													ipAddress,
+													includeLogEntriesAfterThisTimeFrame,
+													maxminMaxLogDate,
+													-1,
+													dtLogsStack,
+													null,
+													parseNonLogs,
+													excelWorkSheetStatusLogCassandra,
+				 									nodeGCInfo,
+													ignoreKeySpaces,
+													kstblNames,
+													dtLogSummaryStack,
+													dtLogStatusStack,
+													dtCFStatsStack,
+													dtTPStatsStack);
+			}
+       }
+	}
+
+
+	return Task<int>
+			.Factory
+			.ContinueWhenAll(new Task[] { logTask, summaryTask, statusTask, archTask }, tasks => logTask.Result + archTask.Result);
+}
+
+
+#endregion
 
 #region Excel Related Functions
 
@@ -1581,6 +1764,12 @@ int DTLoadIntoDifferentExcelWorkBook(string excelFilePath,
 		return 0;
 	}
 
+	Console.WriteLine("Preparing to Load (before filtering) the following data tables {{{0}}} ({1}) with total number of rows {2} into Workbook \"{3}\"...",
+						string.Join(", ", dtExcelList.Select(el => el.TableName)),
+						dtExcelList.Count,
+						dtExcelList.Sum(el => el.Rows.Count),
+						excelFilePath);
+
 	if (dtExcelList.Count == 1)
 	{
 		dtComplete = dtExcelList[0];
@@ -1625,6 +1814,13 @@ int DTLoadIntoDifferentExcelWorkBook(string excelFilePath,
 	if(dtComplete.Rows.Count == 0) 
 		return 0;
 
+	Console.WriteLine("Loaded the following data tables {{{0}}} ({1}) with total number of rows {2} into one data table ({3}) with a row count of {4}...",
+						string.Join(", ", dtExcelList.Select(el => el.TableName)),
+						dtExcelList.Count,
+						dtExcelList.Sum(el => el.Rows.Count),
+						dtComplete.TableName,
+						dtComplete.Rows.Count);
+
 	if (maxRowInExcelWorkBook <= 0 || dtComplete.Rows.Count <= maxRowInExcelWorkBook)
 	{
 		excelTargetFile.FileNameFormat = string.Format("{0}-{{0}}{1}",
@@ -1634,31 +1830,12 @@ int DTLoadIntoDifferentExcelWorkBook(string excelFilePath,
 		var excelFile = excelTargetFile.ApplyFileNameFormat(new object[] { workSheetName }).FileInfo();
 		using (var excelPkg = new ExcelPackage(excelFile))
 		{
-			if (maxRowInExcelWorkSheet <= 0 || dtComplete.Rows.Count <= maxRowInExcelWorkSheet)
-			{
-				DTLoadIntoExcelWorkBook(excelPkg,
+			DTLoadIntoExcelWorkBook(excelPkg,
 										workSheetName,
 										dtComplete,
 										worksheetAction,
 										viewFilterSortRowStateOpts,
 										startingWSCell);
-			}
-			else
-			{
-				var newStack = new Common.Patterns.Collections.LockFree.Stack<System.Data.DataTable>();
-
-				newStack.Push(dtComplete);
-
-				DTLoadIntoExcelWorkBook(excelPkg,
-											workSheetName,
-											newStack,
-											worksheetAction,
-											maxRowInExcelWorkSheet > 0,
-											maxRowInExcelWorkSheet,
-											viewFilterSortRowStateOpts,
-											startingWSCell);
-			}
-
 			excelPkg.Save();
 			Console.WriteLine("*** Excel WorkBooks saved to \"{0}\"", excelFile.FullName);
 		}
@@ -1675,8 +1852,16 @@ int DTLoadIntoDifferentExcelWorkBook(string excelFilePath,
 									viewFilterSortRowStateOpts.Item3))
 					.ToTable();
 		dtComplete.TableName = tableName + "-Filtered";
+
+		Console.WriteLine("Filtered/Sorted data table \"{0}\" with a row count of {1}...",
+							dtComplete.TableName,
+							dtComplete.Rows.Count);
 	}
 
+	Console.WriteLine("Beginning to split data table \"{0}\" with a row count of {1}...",
+							dtComplete.TableName,
+							dtComplete.Rows.Count);
+							
 	var dtSplits = new List<DataTable>();
 	var dtCurrent = new DataTable(dtComplete.TableName + "-Split-0");
 	int totalRows = 0;
@@ -1712,6 +1897,12 @@ int DTLoadIntoDifferentExcelWorkBook(string excelFilePath,
 	dtCurrent.EndLoadData();
 	dtSplits.Add(dtCurrent);
 	totalRows = 0;
+
+	Console.WriteLine("Splited data table \"{0}\" with a row count of {1} into {2} data tables {{{3}}}...",
+							dtComplete.TableName,
+							dtComplete.Rows.Count,
+							dtSplits.Count,
+							string.Join(", ", dtSplits.Select(s => s.TableName)));
 
 	int nResult = 0;
 
@@ -2371,10 +2562,9 @@ int ReadCassandraLogParseIntoDataTable(IFilePath clogFilePath,
 			{
 				if (nodeRangers.Any(r => r.IsBetween(lineDateTime)))
 				{
-					Console.WriteLine(string.Format("Warning: Log Date \"{1}\" falls between already processed timestamp ranges of \"{2}\". Processing of this log file is aborted. Log File is \"{0}\"",
+					nodeRangers.Dump(string.Format("Warning: Log Date \"{1}\" falls between already processed timestamp ranges. Processing of this log file is aborted. Log File is \"{0}\"",
 														clogFilePath.PathResolved,
-														lineDateTime,
-														string.Join(", ", nodeRangers)));
+														lineDateTime));
 					break;
 				}
 			}
@@ -3540,7 +3730,7 @@ void ReadInfoFileParseIntoDataTable(IFilePath infoFilePath,
 	
 	if (dataRow == null)
 	{
-		Console.WriteLine("Warning: IP Address {0} was not found in the \"nodetool ring\" file but was found within the \"nodetool info\" file.", ipAddress);
+		ipAddress.Dump("Warning: IP Address was not found in the \"nodetool ring\" file but was found within the \"nodetool info\" file.");
 		return;
 	}
 	
@@ -3661,7 +3851,7 @@ void ReadDSEToolRingFileParseIntoDataTable(IFilePath dseRingFilePath,
 
 			if (dataRow == null)
 			{
-				Console.WriteLine("Warning: IP Address {0} was not found in the \"nodetool ring\" file but was found within the \"dsetool ring\" file. Ring information added.", ipAddress);
+				ipAddress.Dump("Warning: IP Address was not found in the \"nodetool ring\" file but was found within the \"dsetool ring\" file. Ring information added.");
 
 				dataRow = dtRingInfo.NewRow();
 
